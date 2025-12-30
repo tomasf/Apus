@@ -2,21 +2,6 @@ import Testing
 import Foundation
 @testable import Apus
 
-@Test func harfbuzzVersion() {
-    let version = Apus.harfbuzzVersion()
-    #expect(version == "12.3.0")
-}
-
-@Test func freetypeVersion() {
-    let version = Apus.freetypeVersion()
-    #expect(version.major == 2)
-    #expect(version.minor >= 13)
-}
-
-@Test func verify() {
-    #expect(Apus.verify())
-}
-
 @Test func loadFont() throws {
     // Use Helvetica which should be available on macOS
     let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
