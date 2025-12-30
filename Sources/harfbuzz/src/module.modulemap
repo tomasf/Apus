@@ -1,0 +1,6 @@
+module harfbuzz {
+    header "hb.h"
+    header "hb-ft.h"
+    header "hb-ot.h"
+    export *
+}
