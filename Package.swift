@@ -23,6 +23,10 @@ let package = Package(
     products: [
         .library(name: "Apus", targets: ["Apus"]),
     ],
+    traits: [
+        .default(enabledTraits: ["Fontconfig"]),
+        .trait(name: "Fontconfig", description: "Enable Fontconfig support for font discovery on Linux"),
+    ],
     targets: [
         .target(
             name: "freetype",
@@ -90,9 +94,21 @@ let package = Package(
                 .define("HAVE_FREETYPE"),
             ]
         ),
+        .systemLibrary(
+            name: "Fontconfig",
+            path: "Sources/Fontconfig",
+            pkgConfig: "fontconfig",
+            providers: [
+                .apt(["libfontconfig1-dev"])
+            ]
+        ),
         .target(
             name: "Apus",
-            dependencies: ["harfbuzz", "freetype"],
+            dependencies: [
+                "harfbuzz",
+                "freetype",
+                .target(name: "Fontconfig", condition: .when(platforms: [.linux], traits: ["Fontconfig"])),
+            ],
             swiftSettings: [
                 .interoperabilityMode(.Cxx)
             ]

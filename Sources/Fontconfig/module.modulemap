@@ -1,0 +1,4 @@
+module Fontconfig {
+    header "/usr/include/fontconfig/fontconfig.h"
+    export *
+}

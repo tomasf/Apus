@@ -84,3 +84,30 @@ import Testing
         #expect(posPoint.x > rawPoint.x)
     }
 }
+
+@Test func loadFontByFamily() throws {
+    // Load Helvetica by family name
+    let font = try Font(family: "Helvetica")
+    let glyphs = font.glyphs(for: "Test")
+
+    #expect(glyphs.count == 4)
+    for glyph in glyphs {
+        #expect(!glyph.path.isEmpty)
+    }
+}
+
+@Test func loadFontByFamilyAndStyle() throws {
+    // Load Helvetica Neue Bold - using full font name works more reliably with CoreText
+    let font = try Font(family: "Helvetica Neue", style: "Bold")
+    let glyphs = font.glyphs(for: "Bold")
+
+    #expect(glyphs.count == 4)
+    for glyph in glyphs {
+        #expect(!glyph.path.isEmpty)
+    }
+}
+
+@Test func fontRepositoryIsAvailable() {
+    // On macOS, font repository should always be available
+    #expect(FontRepository.isAvailable)
+}

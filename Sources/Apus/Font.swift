@@ -1,18 +1,22 @@
 import freetype
 import harfbuzz
+import Foundation
 
 public final class Font: @unchecked Sendable {
     private let ftLibrary: FT_Library
     private let ftFace: FT_Face
     private let hbFont: OpaquePointer // hb_font_t*
     private let unitsPerEM: Double
+    private let fontData: Data? // Retained for memory-based fonts
 
     public enum FontError: Error {
         case freetypeInitFailed
         case fontLoadFailed(String)
+        case fontNotFound(family: String, style: String?)
         case glyphLoadFailed(UInt32)
     }
 
+    /// Load a font from a file path.
     public init(path: String, faceIndex: Int = 0) throws {
         // Initialize FreeType library
         var library: FT_Library?
@@ -29,6 +33,7 @@ public final class Font: @unchecked Sendable {
         }
         self.ftLibrary = lib
         self.ftFace = f
+        self.fontData = nil
 
         // Set a default size (required for HarfBuzz)
         // Using a large size for better precision; actual scaling is done later
@@ -39,6 +44,56 @@ public final class Font: @unchecked Sendable {
 
         // Store units per EM for scaling
         self.unitsPerEM = Double(f.pointee.units_per_EM)
+    }
+
+    /// Load a font from binary data.
+    public init(data: Data, faceIndex: Int = 0) throws {
+        // Initialize FreeType library
+        var library: FT_Library?
+        guard FT_Init_FreeType(&library) == 0, let lib = library else {
+            throw FontError.freetypeInitFailed
+        }
+
+        // Load font face from memory
+        var face: FT_Face?
+        let error = data.withUnsafeBytes { buffer in
+            FT_New_Memory_Face(lib, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(faceIndex), &face)
+        }
+        guard error == 0, let f = face else {
+            FT_Done_FreeType(lib)
+            throw FontError.fontLoadFailed("memory")
+        }
+        self.ftLibrary = lib
+        self.ftFace = f
+        self.fontData = data // Retain data to keep memory valid
+
+        // Set a default size (required for HarfBuzz)
+        FT_Set_Char_Size(f, 0, FT_F26Dot6(1000 * 64), 72, 72)
+
+        // Create HarfBuzz font from FreeType face
+        self.hbFont = hb_ft_font_create_referenced(f)
+
+        // Store units per EM for scaling
+        self.unitsPerEM = Double(f.pointee.units_per_EM)
+    }
+
+    /// Load a font by family name and optional style using the system font repository.
+    ///
+    /// This uses platform-specific APIs to find fonts:
+    /// - macOS/iOS: CoreText
+    /// - Windows: GDI
+    /// - Linux: Fontconfig (if enabled)
+    ///
+    /// - Parameters:
+    ///   - family: The font family name (e.g., "Helvetica", "Arial").
+    ///   - style: Optional style name (e.g., "Bold", "Italic"). Defaults to regular.
+    /// - Throws: `FontError.fontNotFound` if no matching font is found,
+    ///           or `FontRepository.LookupError` if the lookup fails.
+    public convenience init(family: String, style: String? = nil) throws {
+        guard let match = try FontRepository.matchForFont(family: family, style: style) else {
+            throw FontError.fontNotFound(family: family, style: style)
+        }
+        try self.init(data: match.data)
     }
 
     deinit {
