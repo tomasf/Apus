@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import Apus
 
 @Test func harfbuzzVersion() {
@@ -107,7 +108,50 @@ import Testing
     }
 }
 
-@Test func fontRepositoryIsAvailable() {
-    // On macOS, font repository should always be available
-    #expect(FontRepository.isAvailable)
+@Test func systemFontLookupIsAvailable() {
+    // On macOS, system font lookup should always be available
+    #expect(Font.isSystemFontLookupAvailable)
+}
+
+@Test func fontMetrics() throws {
+    let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
+
+    // Font metrics should have sensible values
+    #expect(font.metrics.ascender > 0)
+    #expect(font.metrics.descender < 0) // Descender is negative
+    #expect(font.metrics.lineHeight > 0)
+    #expect(font.metrics.unitsPerEM > 0)
+
+    // Line extent should be ascender - descender
+    #expect(font.metrics.lineExtent > font.metrics.ascender)
+}
+
+@Test func fontFamilyAndStyleNames() throws {
+    let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
+
+    #expect(font.familyName == "Helvetica")
+    #expect(!font.styleName.isEmpty)
+}
+
+@Test func enumerateFaces() throws {
+    // Helvetica.ttc is a font collection with multiple faces
+    let faces = try Font.faces(atPath: "/System/Library/Fonts/Helvetica.ttc")
+
+    #expect(faces.count > 1) // Should have multiple faces
+    #expect(faces.allSatisfy { $0.familyName == "Helvetica" })
+
+    // Check we have different styles
+    let styles = Set(faces.map(\.styleName))
+    #expect(styles.count > 1)
+}
+
+@Test func loadFaceByFamilyAndStyle() throws {
+    // Load font data first
+    let data = try Data(contentsOf: URL(fileURLWithPath: "/System/Library/Fonts/Helvetica.ttc"))
+
+    // Load a specific face by family and style
+    let font = try Font(data: data, family: "Helvetica", style: "Bold")
+
+    #expect(font.familyName == "Helvetica")
+    #expect(font.styleName == "Bold")
 }

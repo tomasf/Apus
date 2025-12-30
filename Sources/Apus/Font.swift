@@ -1,19 +1,36 @@
-import freetype
-import harfbuzz
+internal import freetype
+internal import harfbuzz
 import Foundation
 
 public final class Font: @unchecked Sendable {
     private let ftLibrary: FT_Library
     private let ftFace: FT_Face
     private let hbFont: OpaquePointer // hb_font_t*
-    private let unitsPerEM: Double
     private let fontData: Data? // Retained for memory-based fonts
+
+    /// The font's family name (e.g., "Helvetica").
+    public let familyName: String
+
+    /// The font's style name (e.g., "Bold", "Italic").
+    public let styleName: String
+
+    /// Font metrics for text layout.
+    public let metrics: FontMetrics
 
     public enum FontError: Error {
         case freetypeInitFailed
         case fontLoadFailed(String)
         case fontNotFound(family: String, style: String?)
+        case faceNotFound(family: String, style: String?)
         case glyphLoadFailed(UInt32)
+    }
+
+    /// Whether system font lookup by family name is available on this platform.
+    ///
+    /// On macOS and Windows, this always returns `true`.
+    /// On Linux, this returns `true` only if Fontconfig support was compiled in.
+    public static var isSystemFontLookupAvailable: Bool {
+        FontRepository.isAvailable
     }
 
     /// Load a font from a file path.
@@ -35,6 +52,10 @@ public final class Font: @unchecked Sendable {
         self.ftFace = f
         self.fontData = nil
 
+        // Extract font names
+        self.familyName = String(cString: f.pointee.family_name)
+        self.styleName = String(cString: f.pointee.style_name)
+
         // Set a default size (required for HarfBuzz)
         // Using a large size for better precision; actual scaling is done later
         FT_Set_Char_Size(f, 0, FT_F26Dot6(1000 * 64), 72, 72)
@@ -42,8 +63,15 @@ public final class Font: @unchecked Sendable {
         // Create HarfBuzz font from FreeType face
         self.hbFont = hb_ft_font_create_referenced(f)
 
-        // Store units per EM for scaling
-        self.unitsPerEM = Double(f.pointee.units_per_EM)
+        // Extract font metrics
+        let sizeMetrics = f.pointee.size.pointee.metrics
+        let unitsPerEM = Double(f.pointee.units_per_EM)
+        self.metrics = FontMetrics(
+            ascender: Double(sizeMetrics.ascender) / 64.0,
+            descender: Double(sizeMetrics.descender) / 64.0,
+            lineHeight: Double(sizeMetrics.height) / 64.0,
+            unitsPerEM: unitsPerEM
+        )
     }
 
     /// Load a font from binary data.
@@ -67,14 +95,25 @@ public final class Font: @unchecked Sendable {
         self.ftFace = f
         self.fontData = data // Retain data to keep memory valid
 
+        // Extract font names
+        self.familyName = String(cString: f.pointee.family_name)
+        self.styleName = String(cString: f.pointee.style_name)
+
         // Set a default size (required for HarfBuzz)
         FT_Set_Char_Size(f, 0, FT_F26Dot6(1000 * 64), 72, 72)
 
         // Create HarfBuzz font from FreeType face
         self.hbFont = hb_ft_font_create_referenced(f)
 
-        // Store units per EM for scaling
-        self.unitsPerEM = Double(f.pointee.units_per_EM)
+        // Extract font metrics
+        let sizeMetrics = f.pointee.size.pointee.metrics
+        let unitsPerEM = Double(f.pointee.units_per_EM)
+        self.metrics = FontMetrics(
+            ascender: Double(sizeMetrics.ascender) / 64.0,
+            descender: Double(sizeMetrics.descender) / 64.0,
+            lineHeight: Double(sizeMetrics.height) / 64.0,
+            unitsPerEM: unitsPerEM
+        )
     }
 
     /// Load a font by family name and optional style using the system font repository.
@@ -94,6 +133,118 @@ public final class Font: @unchecked Sendable {
             throw FontError.fontNotFound(family: family, style: style)
         }
         try self.init(data: match.data)
+    }
+
+    /// Load a font from binary data, matching by family name and optional style.
+    ///
+    /// This is useful for font collection files (.ttc) that contain multiple faces.
+    /// The method searches through all faces in the font data to find a matching one.
+    ///
+    /// - Parameters:
+    ///   - data: The font file data.
+    ///   - family: The font family name to match.
+    ///   - style: Optional style name to match. If nil, returns the first face matching the family.
+    /// - Throws: `FontError.faceNotFound` if no matching face is found.
+    public convenience init(data: Data, family: String, style: String? = nil) throws {
+        let faces = try Font.faces(in: data)
+        guard let faceIndex = faces.firstIndex(where: { face in
+            face.familyName == family && (style == nil || face.styleName == style)
+        }) else {
+            throw FontError.faceNotFound(family: family, style: style)
+        }
+        try self.init(data: data, faceIndex: faceIndex)
+    }
+
+    /// Information about a font face within a font file or collection.
+    public struct FaceInfo: Sendable, Hashable {
+        /// The face index within the font file.
+        public let index: Int
+
+        /// The font family name.
+        public let familyName: String
+
+        /// The font style name.
+        public let styleName: String
+    }
+
+    /// Returns information about all faces contained in a font file.
+    ///
+    /// Font collection files (.ttc) can contain multiple faces. Use this method
+    /// to enumerate them and find the appropriate face index.
+    ///
+    /// - Parameter path: Path to the font file.
+    /// - Returns: Array of face information, one for each face in the file.
+    public static func faces(atPath path: String) throws -> [FaceInfo] {
+        var library: FT_Library?
+        guard FT_Init_FreeType(&library) == 0, let lib = library else {
+            throw FontError.freetypeInitFailed
+        }
+        defer { FT_Done_FreeType(lib) }
+
+        // Load with index -1 to get face count
+        var face: FT_Face?
+        guard FT_New_Face(lib, path, -1, &face) == 0, let f = face else {
+            throw FontError.fontLoadFailed(path)
+        }
+        let faceCount = Int(f.pointee.num_faces)
+        FT_Done_Face(f)
+
+        var result: [FaceInfo] = []
+        for i in 0..<faceCount {
+            guard FT_New_Face(lib, path, FT_Long(i), &face) == 0, let f = face else {
+                continue
+            }
+            result.append(FaceInfo(
+                index: i,
+                familyName: String(cString: f.pointee.family_name),
+                styleName: String(cString: f.pointee.style_name)
+            ))
+            FT_Done_Face(f)
+        }
+        return result
+    }
+
+    /// Returns information about all faces contained in font data.
+    ///
+    /// Font collection files (.ttc) can contain multiple faces. Use this method
+    /// to enumerate them and find the appropriate face index.
+    ///
+    /// - Parameter data: The font file data.
+    /// - Returns: Array of face information, one for each face in the file.
+    public static func faces(in data: Data) throws -> [FaceInfo] {
+        var library: FT_Library?
+        guard FT_Init_FreeType(&library) == 0, let lib = library else {
+            throw FontError.freetypeInitFailed
+        }
+        defer { FT_Done_FreeType(lib) }
+
+        // Load with index -1 to get face count
+        var face: FT_Face?
+        let loadResult = data.withUnsafeBytes { buffer in
+            FT_New_Memory_Face(lib, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), -1, &face)
+        }
+        guard loadResult == 0, let f = face else {
+            throw FontError.fontLoadFailed("memory")
+        }
+        let faceCount = Int(f.pointee.num_faces)
+        FT_Done_Face(f)
+
+        var result: [FaceInfo] = []
+        for i in 0..<faceCount {
+            let loadResult = data.withUnsafeBytes { buffer in
+                FT_New_Memory_Face(lib, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(i), &face)
+            }
+            guard loadResult == 0, let f = face else {
+                continue
+            }
+            result.append(FaceInfo(
+                index: i,
+                familyName: String(cString: f.pointee.family_name),
+                styleName: String(cString: f.pointee.style_name)
+            ))
+            FT_Done_Face(f)
+        }
+        return result
     }
 
     deinit {

@@ -1,5 +1,5 @@
-import freetype
-import harfbuzz
+internal import freetype
+internal import harfbuzz
 
 public struct Apus {
 

@@ -5,7 +5,7 @@ import Foundation
 /// `FontRepository` looks up fonts by name and retrieves their raw data, supporting macOS
 /// (CoreText), Windows (WinSDK), and Linux (Fontconfig).
 ///
-public struct FontRepository: Sendable {
+internal struct FontRepository: Sendable {
     /// Attempts to find a font that matches the given family name and optional style.
     ///
     /// This method uses platform-specific font APIs to locate a font that best matches
