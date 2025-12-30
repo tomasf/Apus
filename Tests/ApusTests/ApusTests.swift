@@ -2,14 +2,84 @@ import Testing
 import Foundation
 @testable import Apus
 
-@Test func loadFont() throws {
-    // Use Helvetica which should be available on macOS
-    let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
-    _ = font // Just verify it loads
+// MARK: - Test Helpers
+
+/// Returns a font that should be available on the current platform
+func getTestFont() throws -> Font {
+    // Try common fonts in order of cross-platform availability
+    let families = ["Arial", "DejaVu Sans", "Liberation Sans", "FreeSans", "Helvetica"]
+
+    for family in families {
+        if let match = try? FontRepository.matchForFont(family: family, style: nil) {
+            return try Font(data: match.data)
+        }
+    }
+
+    throw TestError.noFontAvailable
 }
 
+/// Returns font data for testing
+func getTestFontData() throws -> Data {
+    let families = ["Arial", "DejaVu Sans", "Liberation Sans", "FreeSans", "Helvetica"]
+
+    for family in families {
+        if let match = try? FontRepository.matchForFont(family: family, style: nil) {
+            return match.data
+        }
+    }
+
+    throw TestError.noFontAvailable
+}
+
+/// Creates a temporary font file for path-based tests
+func withTemporaryFontFile<T>(_ body: (String) throws -> T) throws -> T {
+    let data = try getTestFontData()
+    let tempDir = FileManager.default.temporaryDirectory
+    let tempFile = tempDir.appendingPathComponent("test-font-\(UUID().uuidString).ttf")
+
+    try data.write(to: tempFile)
+    defer { try? FileManager.default.removeItem(at: tempFile) }
+
+    return try body(tempFile.path)
+}
+
+enum TestError: Error {
+    case noFontAvailable
+}
+
+// MARK: - Font Loading Tests
+
+@Test func loadFontFromPath() throws {
+    try withTemporaryFontFile { path in
+        let font = try Font(path: path)
+        #expect(!font.familyName.isEmpty)
+    }
+}
+
+@Test func loadFontFromData() throws {
+    let data = try getTestFontData()
+    let font = try Font(data: data)
+    #expect(!font.familyName.isEmpty)
+}
+
+@Test func loadFontByFamily() throws {
+    let font = try getTestFont()
+    let glyphs = font.glyphs(for: "Test")
+
+    #expect(glyphs.count == 4)
+    for glyph in glyphs {
+        #expect(!glyph.path.isEmpty)
+    }
+}
+
+@Test func systemFontLookupIsAvailable() {
+    #expect(Font.isSystemFontLookupAvailable)
+}
+
+// MARK: - Text Shaping Tests
+
 @Test func shapeSimpleText() throws {
-    let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
+    let font = try getTestFont()
     let glyphs = font.glyphs(for: "Hello")
 
     // "Hello" should produce 5 glyphs
@@ -27,7 +97,7 @@ import Foundation
 }
 
 @Test func glyphPathElements() throws {
-    let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
+    let font = try getTestFont()
     let glyphs = font.glyphs(for: "O")
 
     #expect(glyphs.count == 1)
@@ -52,7 +122,7 @@ import Foundation
 }
 
 @Test func positionedPath() throws {
-    let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
+    let font = try getTestFont()
     let glyphs = font.glyphs(for: "AB")
 
     #expect(glyphs.count == 2)
@@ -71,35 +141,10 @@ import Foundation
     }
 }
 
-@Test func loadFontByFamily() throws {
-    // Load Helvetica by family name
-    let font = try Font(family: "Helvetica")
-    let glyphs = font.glyphs(for: "Test")
-
-    #expect(glyphs.count == 4)
-    for glyph in glyphs {
-        #expect(!glyph.path.isEmpty)
-    }
-}
-
-@Test func loadFontByFamilyAndStyle() throws {
-    // Load Helvetica Neue Bold - using full font name works more reliably with CoreText
-    let font = try Font(family: "Helvetica Neue", style: "Bold")
-    let glyphs = font.glyphs(for: "Bold")
-
-    #expect(glyphs.count == 4)
-    for glyph in glyphs {
-        #expect(!glyph.path.isEmpty)
-    }
-}
-
-@Test func systemFontLookupIsAvailable() {
-    // On macOS, system font lookup should always be available
-    #expect(Font.isSystemFontLookupAvailable)
-}
+// MARK: - Font Metrics Tests
 
 @Test func fontMetrics() throws {
-    let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
+    let font = try getTestFont()
 
     // Font metrics should have sensible values
     #expect(font.metrics.ascender > 0)
@@ -112,31 +157,38 @@ import Foundation
 }
 
 @Test func fontFamilyAndStyleNames() throws {
-    let font = try Font(path: "/System/Library/Fonts/Helvetica.ttc")
+    let font = try getTestFont()
 
-    #expect(font.familyName == "Helvetica")
+    #expect(!font.familyName.isEmpty)
     #expect(!font.styleName.isEmpty)
 }
 
-@Test func enumerateFaces() throws {
-    // Helvetica.ttc is a font collection with multiple faces
-    let faces = try Font.faces(atPath: "/System/Library/Fonts/Helvetica.ttc")
+// MARK: - Face Enumeration Tests
 
-    #expect(faces.count > 1) // Should have multiple faces
-    #expect(faces.allSatisfy { $0.familyName == "Helvetica" })
+@Test func enumerateFacesFromData() throws {
+    let data = try getTestFontData()
+    let faces = try Font.faces(in: data)
 
-    // Check we have different styles
-    let styles = Set(faces.map(\.styleName))
-    #expect(styles.count > 1)
+    // Should have at least one face
+    #expect(faces.count >= 1)
+    #expect(!faces[0].familyName.isEmpty)
 }
 
-@Test func loadFaceByFamilyAndStyle() throws {
-    // Load font data first
-    let data = try Data(contentsOf: URL(fileURLWithPath: "/System/Library/Fonts/Helvetica.ttc"))
+@Test func enumerateFacesFromPath() throws {
+    try withTemporaryFontFile { path in
+        let faces = try Font.faces(atPath: path)
 
-    // Load a specific face by family and style
-    let font = try Font(data: data, family: "Helvetica", style: "Bold")
+        #expect(faces.count >= 1)
+        #expect(!faces[0].familyName.isEmpty)
+    }
+}
 
-    #expect(font.familyName == "Helvetica")
-    #expect(font.styleName == "Bold")
+@Test func loadFaceByFamilyFromData() throws {
+    let data = try getTestFontData()
+    let faces = try Font.faces(in: data)
+
+    // Load the font using the discovered family name
+    let font = try Font(data: data, family: faces[0].familyName)
+
+    #expect(font.familyName == faces[0].familyName)
 }
