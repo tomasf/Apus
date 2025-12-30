@@ -321,6 +321,10 @@ public final class Font: @unchecked Sendable {
         var funcs = FT_Outline_Funcs(
             move_to: { (to, user) -> Int32 in
                 let path = user!.assumingMemoryBound(to: Path.self)
+                // Close previous contour if there is one
+                if !path.pointee.isEmpty {
+                    path.pointee.close()
+                }
                 let point = Point(
                     x: Double(to!.pointee.x) / 64.0,
                     y: Double(to!.pointee.y) / 64.0
