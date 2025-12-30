@@ -22,7 +22,6 @@ let package = Package(
             publicHeadersPath: "src",
             cxxSettings: [
                 .define("HAVE_FREETYPE"),
-                .unsafeFlags(["-std=c++17"]),
             ]
         ),
         .target(
