@@ -2,6 +2,11 @@ internal import freetype
 internal import harfbuzz
 import Foundation
 
+/// Creates an OpenType tag from 4 ASCII characters (equivalent to HB_TAG macro)
+private func makeTag(_ c1: UInt8, _ c2: UInt8, _ c3: UInt8, _ c4: UInt8) -> hb_tag_t {
+    (UInt32(c1) << 24) | (UInt32(c2) << 16) | (UInt32(c3) << 8) | UInt32(c4)
+}
+
 public final class Font: @unchecked Sendable {
     private let ftLibrary: FT_Library
     private let ftFace: FT_Face
@@ -19,10 +24,10 @@ public final class Font: @unchecked Sendable {
 
     public enum FontError: Error {
         case freetypeInitFailed
-        case fontLoadFailed(String)
-        case fontNotFound(family: String, style: String?)
-        case faceNotFound(family: String, style: String?)
-        case glyphLoadFailed(UInt32)
+        case fontLoadFailed (String)
+        case fontNotFound (family: String, style: String?)
+        case faceNotFound (family: String, style: String?)
+        case glyphLoadFailed (UInt32)
     }
 
     /// Whether system font lookup by family name is available on this platform.
@@ -253,8 +258,19 @@ public final class Font: @unchecked Sendable {
         FT_Done_FreeType(ftLibrary)
     }
 
-    /// Shape text and return positioned glyphs
-    public func glyphs(for text: String) -> [PositionedGlyph] {
+    /// Shape text and return positioned glyphs.
+    ///
+    /// - Parameters:
+    ///   - text: The text string to shape.
+    ///   - features: Optional OpenType features to enable or disable during shaping.
+    /// - Returns: An array of positioned glyphs with their paths and positions.
+    ///
+    /// Example:
+    /// ```swift
+    /// // Shape with small caps and old-style numerals
+    /// let glyphs = font.glyphs(for: "Hello 123", features: [.smallCaps, .oldStyleNumerals])
+    /// ```
+    public func glyphs(for text: String, features: [OpenTypeFeature] = []) -> [PositionedGlyph] {
         // Create HarfBuzz buffer
         let buffer = hb_buffer_create()
         defer { hb_buffer_destroy(buffer) }
@@ -267,8 +283,22 @@ public final class Font: @unchecked Sendable {
         // Let HarfBuzz auto-detect direction, script, and language from text content
         hb_buffer_guess_segment_properties(buffer)
 
-        // Shape!
-        hb_shape(hbFont, buffer, nil, 0)
+        // Convert OpenType features to HarfBuzz format and shape
+        if features.isEmpty {
+            hb_shape(hbFont, buffer, nil, 0)
+        } else {
+            var hbFeatures = features.map { feature -> hb_feature_t in
+                let bytes = Array(feature.tag.utf8)
+                let tag = makeTag(bytes[0], bytes[1], bytes[2], bytes[3])
+                return hb_feature_t(
+                    tag: tag,
+                    value: feature.value,
+                    start: 0,
+                    end: UInt32.max // HB_FEATURE_GLOBAL_END
+                )
+            }
+            hb_shape(hbFont, buffer, &hbFeatures, UInt32(hbFeatures.count))
+        }
 
         // Get glyph info and positions
         var glyphCount: UInt32 = 0
@@ -383,5 +413,54 @@ public final class Font: @unchecked Sendable {
         }
 
         return path
+    }
+
+    // MARK: - OpenType Feature Enumeration
+
+    /// Returns the OpenType features available in this font.
+    ///
+    /// This includes features from both the GSUB (substitution) and GPOS (positioning) tables.
+    /// Common features include ligatures, small caps, numerals styles, and kerning.
+    ///
+    /// - Returns: An array of 4-character feature tag strings (e.g., "liga", "smcp", "kern").
+    public var availableFeatures: [String] {
+        let face = hb_font_get_face(hbFont)
+
+        var allTags = Set<hb_tag_t>()
+
+        // Get features from GSUB table (substitutions like ligatures, small caps)
+        let gsubTag = makeTag(UInt8(ascii: "G"), UInt8(ascii: "S"), UInt8(ascii: "U"), UInt8(ascii: "B"))
+        allTags.formUnion(getFeatureTags(face: face, tableTag: gsubTag))
+
+        // Get features from GPOS table (positioning like kerning)
+        let gposTag = makeTag(UInt8(ascii: "G"), UInt8(ascii: "P"), UInt8(ascii: "O"), UInt8(ascii: "S"))
+        allTags.formUnion(getFeatureTags(face: face, tableTag: gposTag))
+
+        // Convert tags to strings
+        return allTags.map { tag in
+            let bytes = [
+                UInt8((tag >> 24) & 0xFF),
+                UInt8((tag >> 16) & 0xFF),
+                UInt8((tag >> 8) & 0xFF),
+                UInt8(tag & 0xFF)
+            ]
+            return String(bytes: bytes, encoding: .ascii) ?? "????"
+        }.sorted()
+    }
+
+    /// Get feature tags from a specific OpenType table
+    private func getFeatureTags(face: OpaquePointer!, tableTag: hb_tag_t) -> [hb_tag_t] {
+        // First call to get the count
+        var count: UInt32 = 0
+        let total = hb_ot_layout_table_get_feature_tags(face, tableTag, 0, &count, nil)
+
+        guard total > 0 else { return [] }
+
+        // Allocate buffer and get tags
+        var tags = [hb_tag_t](repeating: 0, count: Int(total))
+        count = total
+        _ = hb_ot_layout_table_get_feature_tags(face, tableTag, 0, &count, &tags)
+
+        return Array(tags.prefix(Int(count)))
     }
 }

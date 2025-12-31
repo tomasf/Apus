@@ -192,3 +192,60 @@ enum TestError: Error {
 
     #expect(font.familyName == faces[0].familyName)
 }
+
+// MARK: - OpenType Feature Tests
+
+@Test func availableFeatures() throws {
+    let font = try getTestFont()
+    let features = font.availableFeatures
+
+    // Most fonts have at least some features
+    #expect(features.count > 0)
+
+    // Each feature should be a 4-character string
+    for feature in features {
+        #expect(feature.count == 4)
+    }
+}
+
+@Test func shapeWithFeatures() throws {
+    let font = try getTestFont()
+
+    // Shape with and without ligatures disabled
+    let withLigatures = font.glyphs(for: "fi")
+    let withoutLigatures = font.glyphs(for: "fi", features: [.noStandardLigatures])
+
+    // If the font has ligatures, disabling them should produce different results
+    // (more glyphs when ligatures are disabled)
+    // Note: Not all fonts have the fi ligature, so we just check that shaping works
+    #expect(withLigatures.count >= 1)
+    #expect(withoutLigatures.count >= 1)
+}
+
+@Test func openTypeFeatureCreation() {
+    // Test static feature creation
+    let smcp = OpenTypeFeature.smallCaps
+    #expect(smcp.tag == "smcp")
+    #expect(smcp.value == 1)
+
+    let noLiga = OpenTypeFeature.noStandardLigatures
+    #expect(noLiga.tag == "liga")
+    #expect(noLiga.value == 0)
+
+    // Test dynamic feature creation
+    let ss01 = OpenTypeFeature.stylisticSet(1)
+    #expect(ss01.tag == "ss01")
+
+    let ss15 = OpenTypeFeature.stylisticSet(15)
+    #expect(ss15.tag == "ss15")
+
+    let cv05 = OpenTypeFeature.characterVariant(5)
+    #expect(cv05.tag == "cv05")
+
+    // Test enabled/disabled helpers
+    let enabled = OpenTypeFeature.enabled("test")
+    #expect(enabled.value == 1)
+
+    let disabled = OpenTypeFeature.disabled("test")
+    #expect(disabled.value == 0)
+}

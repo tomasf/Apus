@@ -6,9 +6,6 @@ import PackageDescription
 #if os(macOS) || os(iOS)
 let ftSystem = "builds/unix/ftsystem.c"
 let ftDebug = "src/base/ftdebug.c"
-#elseif os(Linux)
-let ftSystem = "src/base/ftsystem.c"
-let ftDebug = "src/base/ftdebug.c"
 #elseif os(Windows)
 let ftSystem = "builds/windows/ftsystem.c"
 let ftDebug = "builds/windows/ftdebug.c"
@@ -19,15 +16,29 @@ let ftDebug = "src/base/ftdebug.c"
 
 let package = Package(
     name: "Apus",
-    platforms: [.macOS(.v14)],
     products: [
         .library(name: "Apus", targets: ["Apus"]),
     ],
     traits: [
-        .default(enabledTraits: ["Fontconfig"]),
         .trait(name: "Fontconfig", description: "Enable Fontconfig support for font discovery on Linux"),
+        .default(enabledTraits: ["Fontconfig"]),
     ],
     targets: [
+        .target(
+            name: "Apus",
+            dependencies: [
+                "harfbuzz",
+                "freetype",
+                .target(
+                    name: "Fontconfig",
+                    condition: .when(platforms: [.linux], traits: ["Fontconfig"])
+                ),
+            ]
+        ),
+        .testTarget(
+            name: "ApusTests",
+            dependencies: ["Apus"]
+        ),
         .target(
             name: "freetype",
             path: "Sources/freetype",
@@ -98,28 +109,7 @@ let package = Package(
             name: "Fontconfig",
             path: "Sources/Fontconfig",
             pkgConfig: "fontconfig",
-            providers: [
-                .apt(["libfontconfig1-dev"])
-            ]
+            providers: [.apt(["libfontconfig1-dev"])]
         ),
-        .target(
-            name: "Apus",
-            dependencies: [
-                "harfbuzz",
-                "freetype",
-                .target(name: "Fontconfig", condition: .when(platforms: [.linux], traits: ["Fontconfig"])),
-            ],
-            swiftSettings: [
-                .interoperabilityMode(.Cxx)
-            ]
-        ),
-        .testTarget(
-            name: "ApusTests",
-            dependencies: ["Apus"],
-            swiftSettings: [
-                .interoperabilityMode(.Cxx)
-            ]
-        ),
-    ],
-    cxxLanguageStandard: .cxx17
+    ]
 )
