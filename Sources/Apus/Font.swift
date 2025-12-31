@@ -323,7 +323,7 @@ public final class Font: @unchecked Sendable {
             let advance = Point(x: xAdvance, y: yAdvance)
 
             if let path = extractGlyphPath(glyphID: glyphID) {
-                result.append(PositionedGlyph(path: path, position: position, advance: advance))
+                result.append(PositionedGlyph(path: path, position: position, advance: advance, cluster: info.cluster))
             }
 
             cursorX += xAdvance

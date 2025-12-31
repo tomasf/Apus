@@ -249,3 +249,16 @@ enum TestError: Error {
     let disabled = OpenTypeFeature.disabled("test")
     #expect(disabled.value == 0)
 }
+
+@Test func glyphClusters() throws {
+    let font = try getTestFont()
+    let glyphs = font.glyphs(for: "Hello")
+
+    // Each character should have a different cluster value
+    #expect(glyphs.count == 5)
+
+    // Clusters should be in ascending order for LTR text
+    for i in 1..<glyphs.count {
+        #expect(glyphs[i].cluster > glyphs[i-1].cluster)
+    }
+}
