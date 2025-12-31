@@ -49,20 +49,20 @@ enum TestError: Error {
 
 // MARK: - Font Loading Tests
 
-@Test func loadFontFromPath() throws {
+@Test func `font can be loaded from file path`() throws {
     try withTemporaryFontFile { path in
         let font = try Font(path: path)
         #expect(!font.familyName.isEmpty)
     }
 }
 
-@Test func loadFontFromData() throws {
+@Test func `font can be loaded from data`() throws {
     let data = try getTestFontData()
     let font = try Font(data: data)
     #expect(!font.familyName.isEmpty)
 }
 
-@Test func loadFontByFamily() throws {
+@Test func `font can be loaded by family name`() throws {
     let font = try getTestFont()
     let glyphs = font.glyphs(for: "Test")
 
@@ -72,13 +72,13 @@ enum TestError: Error {
     }
 }
 
-@Test func systemFontLookupIsAvailable() {
+@Test func `system font lookup is available`() {
     #expect(Font.isSystemFontLookupAvailable)
 }
 
 // MARK: - Text Shaping Tests
 
-@Test func shapeSimpleText() throws {
+@Test func `shaping text produces positioned glyphs`() throws {
     let font = try getTestFont()
     let glyphs = font.glyphs(for: "Hello")
 
@@ -96,7 +96,7 @@ enum TestError: Error {
     }
 }
 
-@Test func glyphPathElements() throws {
+@Test func `glyph paths contain expected elements`() throws {
     let font = try getTestFont()
     let glyphs = font.glyphs(for: "O")
 
@@ -121,7 +121,7 @@ enum TestError: Error {
     #expect(hasClose)
 }
 
-@Test func positionedPath() throws {
+@Test func `positioned path is translated to glyph position`() throws {
     let font = try getTestFont()
     let glyphs = font.glyphs(for: "AB")
 
@@ -143,7 +143,7 @@ enum TestError: Error {
 
 // MARK: - Font Metrics Tests
 
-@Test func fontMetrics() throws {
+@Test func `font metrics have sensible values`() throws {
     let font = try getTestFont()
 
     // Font metrics should have sensible values
@@ -156,7 +156,7 @@ enum TestError: Error {
     #expect(font.metrics.lineExtent > font.metrics.ascender)
 }
 
-@Test func fontFamilyAndStyleNames() throws {
+@Test func `font exposes family and style names`() throws {
     let font = try getTestFont()
 
     #expect(!font.familyName.isEmpty)
@@ -165,7 +165,7 @@ enum TestError: Error {
 
 // MARK: - Face Enumeration Tests
 
-@Test func enumerateFacesFromData() throws {
+@Test func `faces can be enumerated from font data`() throws {
     let data = try getTestFontData()
     let faces = try Font.faces(in: data)
 
@@ -174,7 +174,7 @@ enum TestError: Error {
     #expect(!faces[0].familyName.isEmpty)
 }
 
-@Test func enumerateFacesFromPath() throws {
+@Test func `faces can be enumerated from file path`() throws {
     try withTemporaryFontFile { path in
         let faces = try Font.faces(atPath: path)
 
@@ -183,7 +183,7 @@ enum TestError: Error {
     }
 }
 
-@Test func loadFaceByFamilyFromData() throws {
+@Test func `specific face can be loaded by family name from data`() throws {
     let data = try getTestFontData()
     let faces = try Font.faces(in: data)
 
@@ -195,7 +195,7 @@ enum TestError: Error {
 
 // MARK: - OpenType Feature Tests
 
-@Test func availableFeatures() throws {
+@Test func `available features can be enumerated`() throws {
     let font = try getTestFont()
     let features = font.availableFeatures
 
@@ -208,7 +208,7 @@ enum TestError: Error {
     }
 }
 
-@Test func shapeWithFeatures() throws {
+@Test func `text can be shaped with OpenType features`() throws {
     let font = try getTestFont()
 
     // Shape with and without ligatures disabled
@@ -222,7 +222,7 @@ enum TestError: Error {
     #expect(withoutLigatures.count >= 1)
 }
 
-@Test func openTypeFeatureCreation() {
+@Test func `OpenType features can be created with correct tags`() {
     // Test static feature creation
     let smcp = OpenTypeFeature.smallCaps
     #expect(smcp.tag == "smcp")
@@ -250,7 +250,7 @@ enum TestError: Error {
     #expect(disabled.value == 0)
 }
 
-@Test func glyphClusters() throws {
+@Test func `glyphs have cluster values for grouping`() throws {
     let font = try getTestFont()
     let glyphs = font.glyphs(for: "Hello")
 
