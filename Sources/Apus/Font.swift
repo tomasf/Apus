@@ -264,10 +264,8 @@ public final class Font: @unchecked Sendable {
             hb_buffer_add_utf8(buffer, cStr, Int32(text.utf8.count), 0, Int32(text.utf8.count))
         }
 
-        // Set buffer properties
-        hb_buffer_set_direction(buffer, HB_DIRECTION_LTR)
-        hb_buffer_set_script(buffer, HB_SCRIPT_COMMON)
-        hb_buffer_set_language(buffer, hb_language_get_default())
+        // Let HarfBuzz auto-detect direction, script, and language from text content
+        hb_buffer_guess_segment_properties(buffer)
 
         // Shape!
         hb_shape(hbFont, buffer, nil, 0)
