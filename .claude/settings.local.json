@@ -14,7 +14,9 @@
       "Bash(swift package clean:*)",
       "WebSearch",
       "Bash(find:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
     ]
   }
 }
