@@ -22,6 +22,92 @@ public final class Font: @unchecked Sendable {
     /// Font metrics for text layout.
     public let metrics: FontMetrics
 
+    // MARK: - Variable Font Support
+
+    /// Whether this font is a variable font with variation axes.
+    public var isVariable: Bool {
+        let face = hb_font_get_face(hbFont)
+        return hb_ot_var_has_data(face) != 0
+    }
+
+    /// The variation axes available in this font.
+    ///
+    /// Returns an empty array for non-variable fonts.
+    public var variationAxes: [VariationAxis] {
+        let face = hb_font_get_face(hbFont)
+
+        var axisCount: UInt32 = 0
+        let total = hb_ot_var_get_axis_infos(face, 0, &axisCount, nil)
+        guard total > 0 else { return [] }
+
+        var axisInfos = [hb_ot_var_axis_info_t](repeating: hb_ot_var_axis_info_t(), count: Int(total))
+        axisCount = total
+        _ = hb_ot_var_get_axis_infos(face, 0, &axisCount, &axisInfos)
+
+        return axisInfos.prefix(Int(axisCount)).map { info in
+            let tag = tagToString(info.tag)
+            let name = getNameString(face: face, nameID: info.name_id)
+            return VariationAxis(
+                tag: tag,
+                name: name ?? tag,
+                minValue: Double(info.min_value),
+                defaultValue: Double(info.default_value),
+                maxValue: Double(info.max_value)
+            )
+        }
+    }
+
+    /// The named instances (predefined axis combinations) available in this font.
+    ///
+    /// Named instances represent common variations like "Bold" or "Light Condensed".
+    /// Returns an empty array for non-variable fonts.
+    public var namedInstances: [NamedInstance] {
+        let face = hb_font_get_face(hbFont)
+        let count = hb_ot_var_get_named_instance_count(face)
+        guard count > 0 else { return [] }
+
+        let axisCount = hb_ot_var_get_axis_count(face)
+
+        return (0..<count).compactMap { index in
+            let nameID = hb_ot_var_named_instance_get_subfamily_name_id(face, index)
+            let name = getNameString(face: face, nameID: nameID)
+
+            var coordCount = axisCount
+            var coords = [Float](repeating: 0, count: Int(axisCount))
+            _ = hb_ot_var_named_instance_get_design_coords(face, index, &coordCount, &coords)
+
+            return NamedInstance(
+                index: Int(index),
+                name: name ?? "Instance \(index)",
+                coordinates: coords.prefix(Int(coordCount)).map { Double($0) }
+            )
+        }
+    }
+
+    /// Convert an OpenType tag to a 4-character string.
+    private func tagToString(_ tag: hb_tag_t) -> String {
+        let bytes = [
+            UInt8((tag >> 24) & 0xFF),
+            UInt8((tag >> 16) & 0xFF),
+            UInt8((tag >> 8) & 0xFF),
+            UInt8(tag & 0xFF)
+        ]
+        return String(bytes: bytes, encoding: .ascii) ?? "????"
+    }
+
+    /// Get a string from the font's name table.
+    private func getNameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
+        var length: UInt32 = 0
+        // First call to get required length (nil language = English)
+        _ = hb_ot_name_get_utf8(face, nameID, nil, &length, nil)
+        guard length > 0 else { return nil }
+
+        var buffer = [CChar](repeating: 0, count: Int(length) + 1)
+        length = UInt32(buffer.count)
+        _ = hb_ot_name_get_utf8(face, nameID, nil, &length, &buffer)
+        return String(decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
+
     public enum FontError: Error {
         case freetypeInitFailed
         case fontLoadFailed (String)
@@ -39,7 +125,12 @@ public final class Font: @unchecked Sendable {
     }
 
     /// Load a font from a file path.
-    public init(path: String, faceIndex: Int = 0) throws {
+    ///
+    /// - Parameters:
+    ///   - path: Path to the font file.
+    ///   - faceIndex: Index of the face within the font file (for .ttc collections).
+    ///   - variations: Variation axis values to apply (for variable fonts).
+    public init(path: String, faceIndex: Int = 0, variations: [FontVariation] = []) throws {
         // Initialize FreeType library
         var library: FT_Library?
         guard FT_Init_FreeType(&library) == 0, let lib = library else {
@@ -68,6 +159,9 @@ public final class Font: @unchecked Sendable {
         // Create HarfBuzz font from FreeType face
         self.hbFont = hb_ft_font_create_referenced(f)
 
+        // Apply variation axis values if any
+        Self.applyVariations(variations, to: hbFont)
+
         // Extract font metrics
         let sizeMetrics = f.pointee.size.pointee.metrics
         let unitsPerEM = Double(f.pointee.units_per_EM)
@@ -80,7 +174,12 @@ public final class Font: @unchecked Sendable {
     }
 
     /// Load a font from binary data.
-    public init(data: Data, faceIndex: Int = 0) throws {
+    ///
+    /// - Parameters:
+    ///   - data: The font file data.
+    ///   - faceIndex: Index of the face within the font file (for .ttc collections).
+    ///   - variations: Variation axis values to apply (for variable fonts).
+    public init(data: Data, faceIndex: Int = 0, variations: [FontVariation] = []) throws {
         // Initialize FreeType library
         var library: FT_Library?
         guard FT_Init_FreeType(&library) == 0, let lib = library else {
@@ -110,6 +209,9 @@ public final class Font: @unchecked Sendable {
         // Create HarfBuzz font from FreeType face
         self.hbFont = hb_ft_font_create_referenced(f)
 
+        // Apply variation axis values if any
+        Self.applyVariations(variations, to: hbFont)
+
         // Extract font metrics
         let sizeMetrics = f.pointee.size.pointee.metrics
         let unitsPerEM = Double(f.pointee.units_per_EM)
@@ -131,13 +233,14 @@ public final class Font: @unchecked Sendable {
     /// - Parameters:
     ///   - family: The font family name (e.g., "Helvetica", "Arial").
     ///   - style: Optional style name (e.g., "Bold", "Italic"). Defaults to regular.
+    ///   - variations: Variation axis values to apply (for variable fonts).
     /// - Throws: `FontError.fontNotFound` if no matching font is found,
     ///           or `FontRepository.LookupError` if the lookup fails.
-    public convenience init(family: String, style: String? = nil) throws {
+    public convenience init(family: String, style: String? = nil, variations: [FontVariation] = []) throws {
         guard let match = try FontRepository.matchForFont(family: family, style: style) else {
             throw FontError.fontNotFound(family: family, style: style)
         }
-        try self.init(data: match.data)
+        try self.init(data: match.data, variations: variations)
     }
 
     /// Load a font from binary data, matching by family name and optional style.
@@ -149,15 +252,57 @@ public final class Font: @unchecked Sendable {
     ///   - data: The font file data.
     ///   - family: The font family name to match.
     ///   - style: Optional style name to match. If nil, returns the first face matching the family.
+    ///   - variations: Variation axis values to apply (for variable fonts).
     /// - Throws: `FontError.faceNotFound` if no matching face is found.
-    public convenience init(data: Data, family: String, style: String? = nil) throws {
+    public convenience init(data: Data, family: String, style: String? = nil, variations: [FontVariation] = []) throws {
         let faces = try Font.faces(in: data)
         guard let faceIndex = faces.firstIndex(where: { face in
             face.familyName == family && (style == nil || face.styleName == style)
         }) else {
             throw FontError.faceNotFound(family: family, style: style)
         }
+        try self.init(data: data, faceIndex: faceIndex, variations: variations)
+    }
+
+    /// Load a font from a file path using a named instance.
+    ///
+    /// Named instances are predefined axis combinations like "Bold" or "Light Condensed".
+    /// Use `namedInstances` to discover available instances.
+    ///
+    /// - Parameters:
+    ///   - path: Path to the font file.
+    ///   - faceIndex: Index of the face within the font file (for .ttc collections).
+    ///   - namedInstance: Index of the named instance to use.
+    public convenience init(path: String, faceIndex: Int = 0, namedInstance: Int) throws {
+        try self.init(path: path, faceIndex: faceIndex)
+        hb_font_set_var_named_instance(hbFont, UInt32(namedInstance))
+    }
+
+    /// Load a font from binary data using a named instance.
+    ///
+    /// Named instances are predefined axis combinations like "Bold" or "Light Condensed".
+    /// Use `namedInstances` to discover available instances.
+    ///
+    /// - Parameters:
+    ///   - data: The font file data.
+    ///   - faceIndex: Index of the face within the font file (for .ttc collections).
+    ///   - namedInstance: Index of the named instance to use.
+    public convenience init(data: Data, faceIndex: Int = 0, namedInstance: Int) throws {
         try self.init(data: data, faceIndex: faceIndex)
+        hb_font_set_var_named_instance(hbFont, UInt32(namedInstance))
+    }
+
+    /// Apply variation axis values to a HarfBuzz font.
+    private static func applyVariations(_ variations: [FontVariation], to hbFont: OpaquePointer) {
+        guard !variations.isEmpty else { return }
+
+        var hbVariations = variations.map { variation -> hb_variation_t in
+            let bytes = Array(variation.tag.utf8.prefix(4))
+            let tag = (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) |
+                      (UInt32(bytes[2]) << 8) | UInt32(bytes[3])
+            return hb_variation_t(tag: tag, value: Float(variation.value))
+        }
+        hb_font_set_variations(hbFont, &hbVariations, UInt32(hbVariations.count))
     }
 
     /// Information about a font face within a font file or collection.
