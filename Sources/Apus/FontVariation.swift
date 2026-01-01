@@ -21,30 +21,55 @@ public struct FontVariation: Sendable, Hashable {
         self.value = value
     }
 
+    // MARK: - Registered Axis Tags
+
+    /// Weight axis tag ("wght").
+    public static let weightTag = "wght"
+
+    /// Width axis tag ("wdth").
+    public static let widthTag = "wdth"
+
+    /// Slant axis tag ("slnt").
+    public static let slantTag = "slnt"
+
+    /// Italic axis tag ("ital").
+    public static let italicTag = "ital"
+
+    /// Optical size axis tag ("opsz").
+    public static let opticalSizeTag = "opsz"
+
+    /// Y-axis variation tag ("YAXS"). Used by Apple fonts for vertical metrics.
+    public static let yAxisTag = "YAXS"
+
     // MARK: - Common Axes
 
     /// Weight axis (wght). Common range: 100–900.
     public static func weight(_ value: Double) -> FontVariation {
-        FontVariation(tag: "wght", value: value)
+        FontVariation(tag: weightTag, value: value)
     }
 
     /// Width axis (wdth). Common range: 50–200, where 100 is normal.
     public static func width(_ value: Double) -> FontVariation {
-        FontVariation(tag: "wdth", value: value)
+        FontVariation(tag: widthTag, value: value)
     }
 
     /// Slant axis (slnt). Typically in degrees, negative for rightward slant.
     public static func slant(_ value: Double) -> FontVariation {
-        FontVariation(tag: "slnt", value: value)
+        FontVariation(tag: slantTag, value: value)
     }
 
     /// Italic axis (ital). Typically 0 (roman) or 1 (italic).
     public static func italic(_ value: Double) -> FontVariation {
-        FontVariation(tag: "ital", value: value)
+        FontVariation(tag: italicTag, value: value)
     }
 
     /// Optical size axis (opsz). Typically matches the point size.
     public static func opticalSize(_ value: Double) -> FontVariation {
-        FontVariation(tag: "opsz", value: value)
+        FontVariation(tag: opticalSizeTag, value: value)
+    }
+
+    /// Y-axis variation (YAXS). Used by Apple fonts for vertical metrics adjustment.
+    public static func yAxis(_ value: Double) -> FontVariation {
+        FontVariation(tag: yAxisTag, value: value)
     }
 }

@@ -27,5 +27,27 @@ internal extension FontRepository {
             throw .readingFontFailed
         }
     }
+
+    static func availableCoreTextFonts() throws(LookupError) -> [FontFamily] {
+        guard let familyNames = CTFontManagerCopyAvailableFontFamilyNames() as? [String] else {
+            return []
+        }
+
+        return familyNames.sorted().compactMap { familyName in
+            let attributes: [CFString: Any] = [kCTFontFamilyNameAttribute: familyName]
+            let descriptor = CTFontDescriptorCreateWithAttributes(attributes as CFDictionary)
+
+            guard let matches = CTFontDescriptorCreateMatchingFontDescriptors(descriptor, nil) as? [CTFontDescriptor] else {
+                return nil
+            }
+
+            let styles = matches.compactMap { match in
+                CTFontDescriptorCopyAttribute(match, kCTFontStyleNameAttribute) as? String
+            }
+
+            guard !styles.isEmpty else { return nil }
+            return FontFamily(name: familyName, styles: styles)
+        }
+    }
 }
 #endif

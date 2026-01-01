@@ -70,4 +70,30 @@ internal struct FontRepository: Sendable {
         /// The resolved font style (e.g., "Bold Italic").
         public let style: String
     }
+
+    /// A font family with its available styles.
+    public struct FontFamily: Sendable, Hashable {
+        /// The font family name (e.g., "Arial").
+        public let name: String
+
+        /// The available styles for this family (e.g., ["Regular", "Bold", "Italic"]).
+        public let styles: [String]
+    }
+
+    /// Returns all installed font families and their available styles.
+    ///
+    /// - Returns: An array of font families, each containing its available styles.
+    /// - Throws: `LookupError.libraryInitializationFailed` if the platform font system failed to initialize,
+    ///           or `LookupError.notSupported` if font enumeration is not available on this platform.
+    public static func availableFonts() throws(LookupError) -> [FontFamily] {
+#if canImport(CoreText)
+        try availableCoreTextFonts()
+#elseif canImport(WinSDK)
+        try availableWindowsFonts()
+#elseif canImport(Fontconfig)
+        try availableLinuxFonts()
+#else
+        throw .notSupported
+#endif
+    }
 }

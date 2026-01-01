@@ -46,7 +46,7 @@ public final class Font: @unchecked Sendable {
 
         return axisInfos.prefix(Int(axisCount)).map { info in
             let tag = tagToString(info.tag)
-            let name = getNameString(face: face, nameID: info.name_id)
+            let name = getNameString(face: face, nameID: info.name_id) ?? Self.registeredAxisName(for: tag)
             return VariationAxis(
                 tag: tag,
                 name: name ?? tag,
@@ -54,6 +54,19 @@ public final class Font: @unchecked Sendable {
                 defaultValue: Double(info.default_value),
                 maxValue: Double(info.max_value)
             )
+        }
+    }
+
+    /// Well-known names for variation axes.
+    private static func registeredAxisName(for tag: String) -> String? {
+        switch tag {
+        case FontVariation.weightTag: return "Weight"
+        case FontVariation.widthTag: return "Width"
+        case FontVariation.slantTag: return "Slant"
+        case FontVariation.italicTag: return "Italic"
+        case FontVariation.opticalSizeTag: return "Optical Size"
+        case FontVariation.yAxisTag: return "Y Axis"
+        default: return nil
         }
     }
 
@@ -97,14 +110,30 @@ public final class Font: @unchecked Sendable {
 
     /// Get a string from the font's name table.
     private func getNameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
+        // Find an entry for this name ID to get its language
+        var entryCount: UInt32 = 0
+        guard let entries = hb_ot_name_list_names(face, &entryCount), entryCount > 0 else {
+            return nil
+        }
+
+        // Find first entry matching this name ID
+        var language: hb_language_t?
+        for i in 0..<Int(entryCount) {
+            if entries[i].name_id == nameID {
+                language = entries[i].language
+                break
+            }
+        }
+        guard let language else { return nil }
+
+        // Get the name string
         var length: UInt32 = 0
-        // First call to get required length (nil language = English)
-        _ = hb_ot_name_get_utf8(face, nameID, nil, &length, nil)
+        _ = hb_ot_name_get_utf8(face, nameID, language, &length, nil)
         guard length > 0 else { return nil }
 
         var buffer = [CChar](repeating: 0, count: Int(length) + 1)
         length = UInt32(buffer.count)
-        _ = hb_ot_name_get_utf8(face, nameID, nil, &length, &buffer)
+        _ = hb_ot_name_get_utf8(face, nameID, language, &length, &buffer)
         return String(decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
@@ -122,6 +151,23 @@ public final class Font: @unchecked Sendable {
     /// On Linux, this returns `true` only if Fontconfig support was compiled in.
     public static var isSystemFontLookupAvailable: Bool {
         FontRepository.isAvailable
+    }
+
+    /// A font family with its available styles.
+    public struct Family: Sendable, Hashable {
+        /// The font family name (e.g., "Arial").
+        public let name: String
+
+        /// The available styles for this family (e.g., ["Regular", "Bold", "Italic"]).
+        public let styles: [String]
+    }
+
+    /// Returns all installed font families and their available styles.
+    ///
+    /// - Returns: An array of font families sorted by name, each containing its available styles.
+    /// - Throws: If the platform font system fails to initialize or is not supported.
+    public static func availableFamilies() throws -> [Family] {
+        try FontRepository.availableFonts().map { Family(name: $0.name, styles: $0.styles) }
     }
 
     /// Load a font from a file path.
@@ -160,7 +206,7 @@ public final class Font: @unchecked Sendable {
         self.hbFont = hb_ft_font_create_referenced(f)
 
         // Apply variation axis values if any
-        Self.applyVariations(variations, to: hbFont)
+        Self.applyVariations(variations, to: hbFont, ftFace: f)
 
         // Extract font metrics
         let sizeMetrics = f.pointee.size.pointee.metrics
@@ -210,7 +256,7 @@ public final class Font: @unchecked Sendable {
         self.hbFont = hb_ft_font_create_referenced(f)
 
         // Apply variation axis values if any
-        Self.applyVariations(variations, to: hbFont)
+        Self.applyVariations(variations, to: hbFont, ftFace: f)
 
         // Extract font metrics
         let sizeMetrics = f.pointee.size.pointee.metrics
@@ -292,10 +338,11 @@ public final class Font: @unchecked Sendable {
         hb_font_set_var_named_instance(hbFont, UInt32(namedInstance))
     }
 
-    /// Apply variation axis values to a HarfBuzz font.
-    private static func applyVariations(_ variations: [FontVariation], to hbFont: OpaquePointer) {
+    /// Apply variation axis values to HarfBuzz font and FreeType face.
+    private static func applyVariations(_ variations: [FontVariation], to hbFont: OpaquePointer, ftFace: FT_Face) {
         guard !variations.isEmpty else { return }
 
+        // Apply to HarfBuzz (for shaping/positioning)
         var hbVariations = variations.map { variation -> hb_variation_t in
             let bytes = Array(variation.tag.utf8.prefix(4))
             let tag = (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) |
@@ -303,6 +350,32 @@ public final class Font: @unchecked Sendable {
             return hb_variation_t(tag: tag, value: Float(variation.value))
         }
         hb_font_set_variations(hbFont, &hbVariations, UInt32(hbVariations.count))
+
+        // Apply to FreeType (for glyph outlines)
+        // First get axis count and order from the font
+        var ftMaster: UnsafeMutablePointer<FT_MM_Var>?
+        guard FT_Get_MM_Var(ftFace, &ftMaster) == 0, let master = ftMaster else { return }
+        defer { FT_Done_MM_Var(FT_Face(ftFace)?.pointee.glyph?.pointee.library, master) }
+
+        // Build coordinate array in axis order
+        var coords = [FT_Fixed](repeating: 0, count: Int(master.pointee.num_axis))
+        for i in 0..<Int(master.pointee.num_axis) {
+            let axis = master.pointee.axis[i]
+            coords[i] = axis.def  // Start with default
+
+            // Find if user specified this axis
+            for variation in variations {
+                let bytes = Array(variation.tag.utf8.prefix(4))
+                let tag = (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) |
+                          (UInt32(bytes[2]) << 8) | UInt32(bytes[3])
+                if axis.tag == tag {
+                    // Convert to 16.16 fixed point
+                    coords[i] = FT_Fixed(variation.value * 65536.0)
+                    break
+                }
+            }
+        }
+        FT_Set_Var_Design_Coordinates(ftFace, UInt32(coords.count), &coords)
     }
 
     /// Information about a font face within a font file or collection.

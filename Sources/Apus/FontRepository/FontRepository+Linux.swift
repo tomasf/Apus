@@ -46,6 +46,46 @@ internal extension FontRepository {
             throw .readingFontFailed
         }
     }
+
+    static func availableLinuxFonts() throws(LookupError) -> [FontFamily] {
+        guard let config = FcInitLoadConfigAndFonts(),
+              let pattern = FcPatternCreate(),
+              let objectSet = FcObjectSetBuild(FC_FAMILY, FC_STYLE, nil)
+        else {
+            throw .libraryInitializationFailed
+        }
+
+        defer {
+            FcPatternDestroy(pattern)
+            FcObjectSetDestroy(objectSet)
+        }
+
+        guard let fontSet = FcFontList(config, pattern, objectSet) else {
+            return []
+        }
+        defer { FcFontSetDestroy(fontSet) }
+
+        var families: [String: Set<String>] = [:]
+
+        for i in 0..<fontSet.pointee.nfont {
+            guard let font = fontSet.pointee.fonts[Int(i)] else { continue }
+
+            var familyPtr, stylePtr: UnsafeMutablePointer<FcChar8>?
+            guard FcPatternGetString(font, FC_FAMILY, 0, &familyPtr) == FcResultMatch,
+                  let familyPtr,
+                  FcPatternGetString(font, FC_STYLE, 0, &stylePtr) == FcResultMatch,
+                  let stylePtr
+            else { continue }
+
+            let family = String(cString: familyPtr)
+            let style = String(cString: stylePtr)
+            families[family, default: []].insert(style)
+        }
+
+        return families.keys.sorted().map { family in
+            FontFamily(name: family, styles: families[family]!.sorted())
+        }
+    }
 }
 
 #endif

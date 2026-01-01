@@ -1,6 +1,7 @@
 module freetype {
     header "freetype/freetype.h"
     header "freetype/ftoutln.h"
+    header "freetype/ftmm.h"
     textual header "freetype/fterrdef.h"
     export *
 }
