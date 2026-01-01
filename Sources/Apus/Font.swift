@@ -3,14 +3,14 @@ internal import harfbuzz
 import Foundation
 
 /// Creates an OpenType tag from 4 ASCII characters (equivalent to HB_TAG macro)
-private func makeTag(_ c1: UInt8, _ c2: UInt8, _ c3: UInt8, _ c4: UInt8) -> hb_tag_t {
+internal func makeTag(_ c1: UInt8, _ c2: UInt8, _ c3: UInt8, _ c4: UInt8) -> hb_tag_t {
     (UInt32(c1) << 24) | (UInt32(c2) << 16) | (UInt32(c3) << 8) | UInt32(c4)
 }
 
 public final class Font: @unchecked Sendable {
     private let ftLibrary: FT_Library
-    private let ftFace: FT_Face
-    private let hbFont: OpaquePointer // hb_font_t*
+    internal let ftFace: FT_Face
+    internal let hbFont: OpaquePointer // hb_font_t*
     private let fontData: Data? // Retained for memory-based fonts
 
     /// The font's family name (e.g., "Helvetica").
@@ -22,120 +22,7 @@ public final class Font: @unchecked Sendable {
     /// Font metrics for text layout.
     public let metrics: FontMetrics
 
-    // MARK: - Variable Font Support
-
-    /// Whether this font is a variable font with variation axes.
-    public var isVariable: Bool {
-        let face = hb_font_get_face(hbFont)
-        return hb_ot_var_has_data(face) != 0
-    }
-
-    /// The variation axes available in this font.
-    ///
-    /// Returns an empty array for non-variable fonts.
-    public var variationAxes: [VariationAxis] {
-        let face = hb_font_get_face(hbFont)
-
-        var axisCount: UInt32 = 0
-        let total = hb_ot_var_get_axis_infos(face, 0, &axisCount, nil)
-        guard total > 0 else { return [] }
-
-        var axisInfos = [hb_ot_var_axis_info_t](repeating: hb_ot_var_axis_info_t(), count: Int(total))
-        axisCount = total
-        _ = hb_ot_var_get_axis_infos(face, 0, &axisCount, &axisInfos)
-
-        return axisInfos.prefix(Int(axisCount)).map { info in
-            let tag = tagToString(info.tag)
-            let name = getNameString(face: face, nameID: info.name_id) ?? Self.registeredAxisName(for: tag)
-            return VariationAxis(
-                tag: tag,
-                name: name ?? tag,
-                minValue: Double(info.min_value),
-                defaultValue: Double(info.default_value),
-                maxValue: Double(info.max_value)
-            )
-        }
-    }
-
-    /// Well-known names for variation axes.
-    private static func registeredAxisName(for tag: String) -> String? {
-        switch tag {
-        case FontVariation.weightTag: return "Weight"
-        case FontVariation.widthTag: return "Width"
-        case FontVariation.slantTag: return "Slant"
-        case FontVariation.italicTag: return "Italic"
-        case FontVariation.opticalSizeTag: return "Optical Size"
-        case FontVariation.yAxisTag: return "Y Axis"
-        default: return nil
-        }
-    }
-
-    /// The named instances (predefined axis combinations) available in this font.
-    ///
-    /// Named instances represent common variations like "Bold" or "Light Condensed".
-    /// Returns an empty array for non-variable fonts.
-    public var namedInstances: [NamedInstance] {
-        let face = hb_font_get_face(hbFont)
-        let count = hb_ot_var_get_named_instance_count(face)
-        guard count > 0 else { return [] }
-
-        let axisCount = hb_ot_var_get_axis_count(face)
-
-        return (0..<count).compactMap { index in
-            let nameID = hb_ot_var_named_instance_get_subfamily_name_id(face, index)
-            let name = getNameString(face: face, nameID: nameID)
-
-            var coordCount = axisCount
-            var coords = [Float](repeating: 0, count: Int(axisCount))
-            _ = hb_ot_var_named_instance_get_design_coords(face, index, &coordCount, &coords)
-
-            return NamedInstance(
-                index: Int(index),
-                name: name ?? "Instance \(index)",
-                coordinates: coords.prefix(Int(coordCount)).map { Double($0) }
-            )
-        }
-    }
-
-    /// Convert an OpenType tag to a 4-character string.
-    private func tagToString(_ tag: hb_tag_t) -> String {
-        let bytes = [
-            UInt8((tag >> 24) & 0xFF),
-            UInt8((tag >> 16) & 0xFF),
-            UInt8((tag >> 8) & 0xFF),
-            UInt8(tag & 0xFF)
-        ]
-        return String(bytes: bytes, encoding: .ascii) ?? "????"
-    }
-
-    /// Get a string from the font's name table.
-    private func getNameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
-        // Find an entry for this name ID to get its language
-        var entryCount: UInt32 = 0
-        guard let entries = hb_ot_name_list_names(face, &entryCount), entryCount > 0 else {
-            return nil
-        }
-
-        // Find first entry matching this name ID
-        var language: hb_language_t?
-        for i in 0..<Int(entryCount) {
-            if entries[i].name_id == nameID {
-                language = entries[i].language
-                break
-            }
-        }
-        guard let language else { return nil }
-
-        // Get the name string
-        var length: UInt32 = 0
-        _ = hb_ot_name_get_utf8(face, nameID, language, &length, nil)
-        guard length > 0 else { return nil }
-
-        var buffer = [CChar](repeating: 0, count: Int(length) + 1)
-        length = UInt32(buffer.count)
-        _ = hb_ot_name_get_utf8(face, nameID, language, &length, &buffer)
-        return String(decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
-    }
+    // MARK: - Errors
 
     public enum FontError: Error {
         case freetypeInitFailed
@@ -144,6 +31,8 @@ public final class Font: @unchecked Sendable {
         case faceNotFound (family: String, style: String?)
         case glyphLoadFailed (UInt32)
     }
+
+    // MARK: - System Font Support
 
     /// Whether system font lookup by family name is available on this platform.
     ///
@@ -169,6 +58,8 @@ public final class Font: @unchecked Sendable {
     public static func availableFamilies() throws -> [Family] {
         try FontRepository.availableFonts().map { Family(name: $0.name, styles: $0.styles) }
     }
+
+    // MARK: - Initializers
 
     /// Load a font from a file path.
     ///
@@ -338,6 +229,54 @@ public final class Font: @unchecked Sendable {
         hb_font_set_var_named_instance(hbFont, UInt32(namedInstance))
     }
 
+    deinit {
+        hb_font_destroy(hbFont)
+        FT_Done_Face(ftFace)
+        FT_Done_FreeType(ftLibrary)
+    }
+
+    // MARK: - Internal Helpers
+
+    /// Convert an OpenType tag to a 4-character string.
+    internal func tagToString(_ tag: hb_tag_t) -> String {
+        let bytes = [
+            UInt8((tag >> 24) & 0xFF),
+            UInt8((tag >> 16) & 0xFF),
+            UInt8((tag >> 8) & 0xFF),
+            UInt8(tag & 0xFF)
+        ]
+        return String(bytes: bytes, encoding: .ascii) ?? "????"
+    }
+
+    /// Get a string from the font's name table.
+    internal func getNameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
+        // Find an entry for this name ID to get its language
+        var entryCount: UInt32 = 0
+        guard let entries = hb_ot_name_list_names(face, &entryCount), entryCount > 0 else {
+            return nil
+        }
+
+        // Find first entry matching this name ID
+        var language: hb_language_t?
+        for i in 0..<Int(entryCount) {
+            if entries[i].name_id == nameID {
+                language = entries[i].language
+                break
+            }
+        }
+        guard let language else { return nil }
+
+        // Get the name string
+        var length: UInt32 = 0
+        _ = hb_ot_name_get_utf8(face, nameID, language, &length, nil)
+        guard length > 0 else { return nil }
+
+        var buffer = [CChar](repeating: 0, count: Int(length) + 1)
+        length = UInt32(buffer.count)
+        _ = hb_ot_name_get_utf8(face, nameID, language, &length, &buffer)
+        return String(decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
+
     /// Apply variation axis values to HarfBuzz font and FreeType face.
     private static func applyVariations(_ variations: [FontVariation], to hbFont: OpaquePointer, ftFace: FT_Face) {
         guard !variations.isEmpty else { return }
@@ -376,309 +315,5 @@ public final class Font: @unchecked Sendable {
             }
         }
         FT_Set_Var_Design_Coordinates(ftFace, UInt32(coords.count), &coords)
-    }
-
-    /// Information about a font face within a font file or collection.
-    public struct FaceInfo: Sendable, Hashable {
-        /// The face index within the font file.
-        public let index: Int
-
-        /// The font family name.
-        public let familyName: String
-
-        /// The font style name.
-        public let styleName: String
-    }
-
-    /// Returns information about all faces contained in a font file.
-    ///
-    /// Font collection files (.ttc) can contain multiple faces. Use this method
-    /// to enumerate them and find the appropriate face index.
-    ///
-    /// - Parameter path: Path to the font file.
-    /// - Returns: Array of face information, one for each face in the file.
-    public static func faces(atPath path: String) throws -> [FaceInfo] {
-        var library: FT_Library?
-        guard FT_Init_FreeType(&library) == 0, let lib = library else {
-            throw FontError.freetypeInitFailed
-        }
-        defer { FT_Done_FreeType(lib) }
-
-        // Load with index -1 to get face count
-        var face: FT_Face?
-        guard FT_New_Face(lib, path, -1, &face) == 0, let f = face else {
-            throw FontError.fontLoadFailed(path)
-        }
-        let faceCount = Int(f.pointee.num_faces)
-        FT_Done_Face(f)
-
-        var result: [FaceInfo] = []
-        for i in 0..<faceCount {
-            guard FT_New_Face(lib, path, FT_Long(i), &face) == 0, let f = face else {
-                continue
-            }
-            result.append(FaceInfo(
-                index: i,
-                familyName: String(cString: f.pointee.family_name),
-                styleName: String(cString: f.pointee.style_name)
-            ))
-            FT_Done_Face(f)
-        }
-        return result
-    }
-
-    /// Returns information about all faces contained in font data.
-    ///
-    /// Font collection files (.ttc) can contain multiple faces. Use this method
-    /// to enumerate them and find the appropriate face index.
-    ///
-    /// - Parameter data: The font file data.
-    /// - Returns: Array of face information, one for each face in the file.
-    public static func faces(in data: Data) throws -> [FaceInfo] {
-        var library: FT_Library?
-        guard FT_Init_FreeType(&library) == 0, let lib = library else {
-            throw FontError.freetypeInitFailed
-        }
-        defer { FT_Done_FreeType(lib) }
-
-        // Load with index -1 to get face count
-        var face: FT_Face?
-        let loadResult = data.withUnsafeBytes { buffer in
-            FT_New_Memory_Face(lib, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), -1, &face)
-        }
-        guard loadResult == 0, let f = face else {
-            throw FontError.fontLoadFailed("memory")
-        }
-        let faceCount = Int(f.pointee.num_faces)
-        FT_Done_Face(f)
-
-        var result: [FaceInfo] = []
-        for i in 0..<faceCount {
-            let loadResult = data.withUnsafeBytes { buffer in
-                FT_New_Memory_Face(lib, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(i), &face)
-            }
-            guard loadResult == 0, let f = face else {
-                continue
-            }
-            result.append(FaceInfo(
-                index: i,
-                familyName: String(cString: f.pointee.family_name),
-                styleName: String(cString: f.pointee.style_name)
-            ))
-            FT_Done_Face(f)
-        }
-        return result
-    }
-
-    deinit {
-        hb_font_destroy(hbFont)
-        FT_Done_Face(ftFace)
-        FT_Done_FreeType(ftLibrary)
-    }
-
-    /// Shape text and return positioned glyphs.
-    ///
-    /// - Parameters:
-    ///   - text: The text string to shape.
-    ///   - features: Optional OpenType features to enable or disable during shaping.
-    /// - Returns: An array of positioned glyphs with their paths and positions.
-    ///
-    /// Example:
-    /// ```swift
-    /// // Shape with small caps and old-style numerals
-    /// let glyphs = font.glyphs(for: "Hello 123", features: [.smallCaps, .oldStyleNumerals])
-    /// ```
-    public func glyphs(for text: String, features: [OpenTypeFeature] = []) -> [PositionedGlyph] {
-        // Create HarfBuzz buffer
-        let buffer = hb_buffer_create()
-        defer { hb_buffer_destroy(buffer) }
-
-        // Add text to buffer
-        text.withCString { cStr in
-            hb_buffer_add_utf8(buffer, cStr, Int32(text.utf8.count), 0, Int32(text.utf8.count))
-        }
-
-        // Let HarfBuzz auto-detect direction, script, and language from text content
-        hb_buffer_guess_segment_properties(buffer)
-
-        // Convert OpenType features to HarfBuzz format and shape
-        if features.isEmpty {
-            hb_shape(hbFont, buffer, nil, 0)
-        } else {
-            var hbFeatures = features.map { feature -> hb_feature_t in
-                let bytes = Array(feature.tag.utf8)
-                let tag = makeTag(bytes[0], bytes[1], bytes[2], bytes[3])
-                return hb_feature_t(
-                    tag: tag,
-                    value: feature.value,
-                    start: 0,
-                    end: UInt32.max // HB_FEATURE_GLOBAL_END
-                )
-            }
-            hb_shape(hbFont, buffer, &hbFeatures, UInt32(hbFeatures.count))
-        }
-
-        // Get glyph info and positions
-        var glyphCount: UInt32 = 0
-        let glyphInfos = hb_buffer_get_glyph_infos(buffer, &glyphCount)
-        let glyphPositions = hb_buffer_get_glyph_positions(buffer, &glyphCount)
-
-        var result: [PositionedGlyph] = []
-        var cursorX: Double = 0
-        var cursorY: Double = 0
-
-        for i in 0..<Int(glyphCount) {
-            let info = glyphInfos![i]
-            let pos = glyphPositions![i]
-
-            let glyphID = info.codepoint
-            let xOffset = Double(pos.x_offset) / 64.0
-            let yOffset = Double(pos.y_offset) / 64.0
-            let xAdvance = Double(pos.x_advance) / 64.0
-            let yAdvance = Double(pos.y_advance) / 64.0
-
-            let position = Point(x: cursorX + xOffset, y: cursorY + yOffset)
-            let advance = Point(x: xAdvance, y: yAdvance)
-
-            if let path = extractGlyphPath(glyphID: glyphID) {
-                result.append(PositionedGlyph(path: path, position: position, advance: advance, cluster: info.cluster))
-            }
-
-            cursorX += xAdvance
-            cursorY += yAdvance
-        }
-
-        return result
-    }
-
-    /// Extract the outline path for a specific glyph
-    private func extractGlyphPath(glyphID: UInt32) -> Path? {
-        // Load glyph
-        let error = FT_Load_Glyph(ftFace, FT_UInt(glyphID), FT_Int32(FT_LOAD_NO_BITMAP))
-        guard error == 0 else { return nil }
-
-        let glyph = ftFace.pointee.glyph
-        guard glyph?.pointee.format == FT_GLYPH_FORMAT_OUTLINE else { return nil }
-
-        var outline = glyph!.pointee.outline
-        var path = Path()
-
-        // Define outline decomposition callbacks
-        var funcs = FT_Outline_Funcs(
-            move_to: { (to, user) -> Int32 in
-                let path = user!.assumingMemoryBound(to: Path.self)
-                // Close previous contour if there is one
-                if !path.pointee.isEmpty {
-                    path.pointee.close()
-                }
-                let point = Point(
-                    x: Double(to!.pointee.x) / 64.0,
-                    y: Double(to!.pointee.y) / 64.0
-                )
-                path.pointee.moveTo(point)
-                return 0
-            },
-            line_to: { (to, user) -> Int32 in
-                let path = user!.assumingMemoryBound(to: Path.self)
-                let point = Point(
-                    x: Double(to!.pointee.x) / 64.0,
-                    y: Double(to!.pointee.y) / 64.0
-                )
-                path.pointee.lineTo(point)
-                return 0
-            },
-            conic_to: { (control, to, user) -> Int32 in
-                let path = user!.assumingMemoryBound(to: Path.self)
-                let ctrl = Point(
-                    x: Double(control!.pointee.x) / 64.0,
-                    y: Double(control!.pointee.y) / 64.0
-                )
-                let end = Point(
-                    x: Double(to!.pointee.x) / 64.0,
-                    y: Double(to!.pointee.y) / 64.0
-                )
-                path.pointee.quadraticTo(control: ctrl, end: end)
-                return 0
-            },
-            cubic_to: { (control1, control2, to, user) -> Int32 in
-                let path = user!.assumingMemoryBound(to: Path.self)
-                let c1 = Point(
-                    x: Double(control1!.pointee.x) / 64.0,
-                    y: Double(control1!.pointee.y) / 64.0
-                )
-                let c2 = Point(
-                    x: Double(control2!.pointee.x) / 64.0,
-                    y: Double(control2!.pointee.y) / 64.0
-                )
-                let end = Point(
-                    x: Double(to!.pointee.x) / 64.0,
-                    y: Double(to!.pointee.y) / 64.0
-                )
-                path.pointee.cubicTo(control1: c1, control2: c2, end: end)
-                return 0
-            },
-            shift: 0,
-            delta: 0
-        )
-
-        withUnsafeMutablePointer(to: &path) { pathPtr in
-            _ = FT_Outline_Decompose(&outline, &funcs, pathPtr)
-        }
-
-        // Close path if needed (FreeType doesn't always emit close)
-        if !path.isEmpty {
-            path.close()
-        }
-
-        return path
-    }
-
-    // MARK: - OpenType Feature Enumeration
-
-    /// Returns the OpenType features available in this font.
-    ///
-    /// This includes features from both the GSUB (substitution) and GPOS (positioning) tables.
-    /// Common features include ligatures, small caps, numerals styles, and kerning.
-    ///
-    /// - Returns: An array of 4-character feature tag strings (e.g., "liga", "smcp", "kern").
-    public var availableFeatures: [String] {
-        let face = hb_font_get_face(hbFont)
-
-        var allTags = Set<hb_tag_t>()
-
-        // Get features from GSUB table (substitutions like ligatures, small caps)
-        let gsubTag = makeTag(UInt8(ascii: "G"), UInt8(ascii: "S"), UInt8(ascii: "U"), UInt8(ascii: "B"))
-        allTags.formUnion(getFeatureTags(face: face, tableTag: gsubTag))
-
-        // Get features from GPOS table (positioning like kerning)
-        let gposTag = makeTag(UInt8(ascii: "G"), UInt8(ascii: "P"), UInt8(ascii: "O"), UInt8(ascii: "S"))
-        allTags.formUnion(getFeatureTags(face: face, tableTag: gposTag))
-
-        // Convert tags to strings
-        return allTags.map { tag in
-            let bytes = [
-                UInt8((tag >> 24) & 0xFF),
-                UInt8((tag >> 16) & 0xFF),
-                UInt8((tag >> 8) & 0xFF),
-                UInt8(tag & 0xFF)
-            ]
-            return String(bytes: bytes, encoding: .ascii) ?? "????"
-        }.sorted()
-    }
-
-    /// Get feature tags from a specific OpenType table
-    private func getFeatureTags(face: OpaquePointer!, tableTag: hb_tag_t) -> [hb_tag_t] {
-        // First call to get the count
-        var count: UInt32 = 0
-        let total = hb_ot_layout_table_get_feature_tags(face, tableTag, 0, &count, nil)
-
-        guard total > 0 else { return [] }
-
-        // Allocate buffer and get tags
-        var tags = [hb_tag_t](repeating: 0, count: Int(total))
-        count = total
-        _ = hb_ot_layout_table_get_feature_tags(face, tableTag, 0, &count, &tags)
-
-        return Array(tags.prefix(Int(count)))
     }
 }
