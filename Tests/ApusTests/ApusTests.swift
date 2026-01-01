@@ -262,16 +262,3 @@ enum TestError: Error {
         #expect(glyphs[i].cluster > glyphs[i-1].cluster)
     }
 }
-
-@Test func variable() throws {
-    for family in try Font.availableFamilies() {
-        for style in family.styles {
-            do {
-                let font = try Font(family: family.name, style: style)
-                if font.isVariable {
-                    print("\(family.name), \(style) is variable: \(font.variationAxes)")
-                }
-            } catch{}
-        }
-    }
-}

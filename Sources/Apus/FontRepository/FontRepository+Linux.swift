@@ -50,7 +50,7 @@ internal extension FontRepository {
     static func availableLinuxFonts() throws(LookupError) -> [FontFamily] {
         guard let config = FcInitLoadConfigAndFonts(),
               let pattern = FcPatternCreate(),
-              let objectSet = FcObjectSetBuild(FC_FAMILY, FC_STYLE, UnsafePointer<CChar>(nil))
+              let objectSet = FcObjectSetBuild(FC_FAMILY, FC_STYLE, nil as UnsafePointer<CChar>?)
         else {
             throw .libraryInitializationFailed
         }
