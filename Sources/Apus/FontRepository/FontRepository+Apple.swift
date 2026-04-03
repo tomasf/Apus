@@ -3,7 +3,12 @@ import Foundation
 import CoreText
 
 internal extension FontRepository {
-    static func matchForCoreTextFont(family name: String, style: String?) throws(LookupError) -> Match? {
+    // CTFontDescriptorCreateMatchingFontDescriptor makes a synchronous XPC call to the font
+    // registry daemon. Running many concurrent lookups from the Swift cooperative thread pool
+    // exhausts the pool. A serial queue serializes these calls to prevent this.
+    static private let lookupQueue = DispatchQueue(label: "se.tomasf.apus.fontlookup")
+
+    static private func internalMatchForCoreTextFont(family name: String, style: String?) throws(LookupError) -> Match? {
         let attributes = NSMutableDictionary()
         attributes[kCTFontNameAttribute] = name
         if let style = style {
@@ -24,7 +29,19 @@ internal extension FontRepository {
             let data = try Data(contentsOf: url)
             return Match(data: data, familyName: matchedFamily, style: matchedStyle)
         } catch {
-            throw .readingFontFailed
+            throw LookupError.readingFontFailed
+        }
+    }
+
+    static func matchForCoreTextFont(family name: String, style: String?) throws(LookupError) -> Match? {
+        do {
+            return try lookupQueue.sync {
+                try internalMatchForCoreTextFont(family: name, style: style)
+            }
+        } catch let error as LookupError {
+            throw error
+        } catch {
+            return nil
         }
     }
 
