@@ -59,7 +59,7 @@ extension Font {
             let info = glyphInfos![i]
             let pos = glyphPositions![i]
 
-            let glyphID = info.codepoint
+            let glyphId = info.codepoint
             let xOffset = Double(pos.x_offset) / 64.0
             let yOffset = Double(pos.y_offset) / 64.0
             let xAdvance = Double(pos.x_advance) / 64.0
@@ -68,7 +68,7 @@ extension Font {
             let position = Point(x: cursorX + xOffset, y: cursorY + yOffset)
             let advance = Point(x: xAdvance, y: yAdvance)
 
-            if let path = extractGlyphPath(glyphID: glyphID) {
+            if let path = glyphPath(for: glyphId) {
                 result.append(PositionedGlyph(path: path, position: position, advance: advance, cluster: info.cluster))
             }
 
@@ -79,10 +79,10 @@ extension Font {
         return result
     }
 
-    /// Extract the outline path for a specific glyph
-    private func extractGlyphPath(glyphID: UInt32) -> Path? {
+    /// Returns the outline path for a glyph, or `nil` if the glyph has no outline.
+    private func glyphPath(for glyphId: UInt32) -> Path? {
         // Load glyph
-        let error = FT_Load_Glyph(ftFace, FT_UInt(glyphID), FT_Int32(FT_LOAD_NO_BITMAP))
+        let error = FT_Load_Glyph(ftFace, FT_UInt(glyphId), FT_Int32(FT_LOAD_NO_BITMAP))
         guard error == 0 else { return nil }
 
         let glyph = ftFace.pointee.glyph

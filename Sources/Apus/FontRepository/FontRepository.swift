@@ -20,13 +20,13 @@ internal struct FontRepository: Sendable {
     ///           `LookupError.readingFontFailed` if the font was found but could not be read,
     ///           or `LookupError.notSupported` if font lookup is not available on this platform.
     ///
-    public static func matchForFont(family name: String, style: String? = nil) throws(LookupError) -> Match? {
+    public static func match(family name: String, style: String? = nil) throws(LookupError) -> Match? {
 #if canImport(CoreText)
-        try matchForCoreTextFont(family: name, style: style)
+        try coreTextMatch(family: name, style: style)
 #elseif canImport(WinSDK)
-        try matchForWindowsFont(family: name, style: style)
+        try windowsMatch(family: name, style: style)
 #elseif canImport(Fontconfig)
-        try matchForLinuxFont(family: name, style: style)
+        try linuxMatch(family: name, style: style)
 #else
         throw .notSupported
 #endif
@@ -72,7 +72,7 @@ internal struct FontRepository: Sendable {
     }
 
     /// A font family with its available styles.
-    public struct FontFamily: Sendable, Hashable {
+    public struct Family: Sendable, Hashable {
         /// The font family name (e.g., "Arial").
         public let name: String
 
@@ -85,13 +85,13 @@ internal struct FontRepository: Sendable {
     /// - Returns: An array of font families, each containing its available styles.
     /// - Throws: `LookupError.libraryInitializationFailed` if the platform font system failed to initialize,
     ///           or `LookupError.notSupported` if font enumeration is not available on this platform.
-    public static func availableFonts() throws(LookupError) -> [FontFamily] {
+    public static func availableFamilies() throws(LookupError) -> [Family] {
 #if canImport(CoreText)
-        try availableCoreTextFonts()
+        try availableCoreTextFamilies()
 #elseif canImport(WinSDK)
-        try availableWindowsFonts()
+        try availableWindowsFamilies()
 #elseif canImport(Fontconfig)
-        try availableLinuxFonts()
+        try availableLinuxFamilies()
 #else
         throw .notSupported
 #endif

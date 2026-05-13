@@ -10,7 +10,7 @@ func testFont() throws -> Font {
     let families = ["Arial", "DejaVu Sans", "Liberation Sans", "FreeSans", "Helvetica"]
 
     for family in families {
-        if let match = try? FontRepository.matchForFont(family: family, style: nil) {
+        if let match = try? FontRepository.match(family: family, style: nil) {
             return try Font(data: match.data)
         }
     }
@@ -23,7 +23,7 @@ func testFontData() throws -> Data {
     let families = ["Arial", "DejaVu Sans", "Liberation Sans", "FreeSans", "Helvetica"]
 
     for family in families {
-        if let match = try? FontRepository.matchForFont(family: family, style: nil) {
+        if let match = try? FontRepository.match(family: family, style: nil) {
             return match.data
         }
     }

@@ -8,7 +8,7 @@ internal extension FontRepository {
     // exhausts the pool. A serial queue serializes these calls to prevent this.
     static private let lookupQueue = DispatchQueue(label: "se.tomasf.apus.fontlookup")
 
-    static private func internalMatchForCoreTextFont(family name: String, style: String?) throws(LookupError) -> Match? {
+    static private func internalCoreTextMatch(family name: String, style: String?) throws(LookupError) -> Match? {
         let attributes = NSMutableDictionary()
         attributes[kCTFontFamilyNameAttribute] = name
         if let style = style {
@@ -33,10 +33,10 @@ internal extension FontRepository {
         }
     }
 
-    static func matchForCoreTextFont(family name: String, style: String?) throws(LookupError) -> Match? {
+    static func coreTextMatch(family name: String, style: String?) throws(LookupError) -> Match? {
         do {
             return try lookupQueue.sync {
-                try internalMatchForCoreTextFont(family: name, style: style)
+                try internalCoreTextMatch(family: name, style: style)
             }
         } catch let error as LookupError {
             throw error
@@ -45,7 +45,7 @@ internal extension FontRepository {
         }
     }
 
-    static func availableCoreTextFonts() throws(LookupError) -> [FontFamily] {
+    static func availableCoreTextFamilies() throws(LookupError) -> [Family] {
         guard let familyNames = CTFontManagerCopyAvailableFontFamilyNames() as? [String] else {
             return []
         }
@@ -63,7 +63,7 @@ internal extension FontRepository {
             }
 
             guard !styles.isEmpty else { return nil }
-            return FontFamily(name: familyName, styles: styles)
+            return Family(name: familyName, styles: styles)
         }
     }
 }

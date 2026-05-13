@@ -3,7 +3,7 @@ import Foundation
 import WinSDK
 
 internal extension FontRepository {
-    static func matchForWindowsFont(family name: String, style: String?) throws(LookupError) -> Match? {
+    static func windowsMatch(family name: String, style: String?) throws(LookupError) -> Match? {
         guard let hdc = CreateCompatibleDC(nil) else {
             throw .libraryInitializationFailed
         }
@@ -80,7 +80,7 @@ internal extension FontRepository {
         return Match(data: data, familyName: matchFamily, style: matchStyle)
     }
 
-    static func availableWindowsFonts() throws(LookupError) -> [FontFamily] {
+    static func availableWindowsFamilies() throws(LookupError) -> [Family] {
         guard let hdc = CreateCompatibleDC(nil) else {
             throw .libraryInitializationFailed
         }
@@ -117,7 +117,7 @@ internal extension FontRepository {
         EnumFontFamiliesExW(hdc, &logFont, callback, LPARAM(Int(bitPattern: contextPointer)), 0)
 
         return context.families.keys.sorted().map { family in
-            FontFamily(name: family, styles: context.families[family]!.sorted())
+            Family(name: family, styles: context.families[family]!.sorted())
         }
     }
 }

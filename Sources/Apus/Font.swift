@@ -59,7 +59,7 @@ public final class Font: @unchecked Sendable {
     /// - Returns: An array of font families sorted by name, each containing its available styles.
     /// - Throws: If the platform font system fails to initialize or is not supported.
     public static func availableFamilies() throws -> [Family] {
-        try FontRepository.availableFonts().map { Family(name: $0.name, styles: $0.styles) }
+        try FontRepository.availableFamilies().map { Family(name: $0.name, styles: $0.styles) }
     }
 
     // MARK: - Initializers
@@ -177,7 +177,7 @@ public final class Font: @unchecked Sendable {
     /// - Throws: `FontError.fontNotFound` if no matching font is found,
     ///           or `FontRepository.LookupError` if the lookup fails.
     public convenience init(family: String, style: String? = nil, variations: [FontVariation] = []) throws {
-        guard let match = try FontRepository.matchForFont(family: family, style: style) else {
+        guard let match = try FontRepository.match(family: family, style: style) else {
             throw FontError.fontNotFound(family: family, style: style)
         }
         try self.init(data: match.data, family: match.familyName, style: match.style, variations: variations)
@@ -313,7 +313,7 @@ public final class Font: @unchecked Sendable {
         return String(decoding: buffer.prefix(while: { $0 != 0 }), as: UTF8.self)
     }
 
-    /// Apply variation axis values to HarfBuzz font and FreeType face.
+    /// Applies variation axis values to the HarfBuzz font and FreeType face.
     private static func applyVariations(_ variations: [FontVariation], to hbFont: OpaquePointer, ftFace: FT_Face) {
         guard !variations.isEmpty else { return }
 
@@ -353,7 +353,7 @@ public final class Font: @unchecked Sendable {
         FT_Set_Var_Design_Coordinates(ftFace, UInt32(coords.count), &coords)
     }
 
-    /// Apply a named instance to both HarfBuzz (for shaping) and FreeType (for glyph outlines).
+    /// Applies a named instance to both HarfBuzz (for shaping) and FreeType (for glyph outlines).
     /// `index` is the HarfBuzz-style 0-based instance index used by `NamedInstance.index`.
     internal static func applyNamedInstance(_ index: Int, hbFont: OpaquePointer, ftFace: FT_Face, library: FT_Library) {
         hb_font_set_var_named_instance(hbFont, UInt32(index))
@@ -369,7 +369,7 @@ public final class Font: @unchecked Sendable {
         FT_Set_Var_Design_Coordinates(ftFace, UInt32(numAxes), &coords)
     }
 
-    /// Look up the subfamily name for a named instance via the OpenType name table.
+    /// Returns the subfamily name for a named instance, looked up via the OpenType name table.
     internal static func namedInstanceName(at index: Int, hbFont: OpaquePointer) -> String? {
         let face = hb_font_get_face(hbFont)
         let count = hb_ot_var_get_named_instance_count(face)
@@ -378,8 +378,8 @@ public final class Font: @unchecked Sendable {
         return nameString(face: face, nameID: nameID)
     }
 
-    /// Find a named instance in the given font data whose subfamily name matches `styleName`.
-    /// Returns the HarfBuzz-style 0-based index, or nil if no instance matches.
+    /// Returns the HarfBuzz-style 0-based index of a named instance in the given font data
+    /// whose subfamily name matches `styleName`, or `nil` if no instance matches.
     internal static func findNamedInstance(in data: Data, faceIndex: Int, named styleName: String) -> Int? {
         data.withUnsafeBytes { buffer -> Int? in
             guard let base = buffer.baseAddress else { return nil }
