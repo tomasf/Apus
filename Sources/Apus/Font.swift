@@ -92,7 +92,7 @@ public final class Font: @unchecked Sendable {
         FT_Set_Char_Size(face, 0, FT_F26Dot6(1000 * 64), 72, 72)
 
         self.hbFont = hb_ft_font_create_referenced(face)
-        Self.applyVariations(variations, to: hbFont, ftFace: face)
+        Self.applyVariations(variations, hbFont: hbFont, ftFace: face, library: lib)
 
         let sizeMetrics = face.pointee.size.pointee.metrics
         self.metrics = FontMetrics(
@@ -278,41 +278,33 @@ public final class Font: @unchecked Sendable {
     }
 
     /// Applies variation axis values to the HarfBuzz font and FreeType face.
-    private static func applyVariations(_ variations: [FontVariation], to hbFont: OpaquePointer, ftFace: FT_Face) {
+    private static func applyVariations(_ variations: [FontVariation], hbFont: OpaquePointer, ftFace: FT_Face, library: FT_Library) {
         guard !variations.isEmpty else { return }
 
         // Apply to HarfBuzz (for shaping/positioning)
-        var hbVariations = variations.map { variation -> hb_variation_t in
-            let bytes = Array(variation.tag.utf8.prefix(4))
-            let tag = (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) |
-                      (UInt32(bytes[2]) << 8) | UInt32(bytes[3])
-            return hb_variation_t(tag: tag, value: Float(variation.value))
+        var hbVariations = variations.map { variation in
+            hb_variation_t(tag: hb_tag_t(openTypeTag: variation.tag), value: Float(variation.value))
         }
         hb_font_set_variations(hbFont, &hbVariations, UInt32(hbVariations.count))
 
-        // Apply to FreeType (for glyph outlines)
-        // First get axis count and order from the font
-        var ftMaster: UnsafeMutablePointer<FT_MM_Var>?
-        guard FT_Get_MM_Var(ftFace, &ftMaster) == 0, let master = ftMaster else { return }
-        defer { FT_Done_MM_Var(FT_Face(ftFace)?.pointee.glyph?.pointee.library, master) }
+        // Apply to FreeType (for glyph outlines).
+        // If the user passes duplicate entries for the same axis, the first one wins —
+        // matching the previous behaviour.
+        var mmVar: UnsafeMutablePointer<FT_MM_Var>?
+        guard FT_Get_MM_Var(ftFace, &mmVar) == 0, let mm = mmVar else { return }
+        defer { FT_Done_MM_Var(library, mm) }
 
-        // Build coordinate array in axis order
-        var coords = [FT_Fixed](repeating: 0, count: Int(master.pointee.num_axis))
-        for i in 0..<Int(master.pointee.num_axis) {
-            let axis = master.pointee.axis[i]
-            coords[i] = axis.def  // Start with default
-
-            // Find if user specified this axis
-            for variation in variations {
-                let bytes = Array(variation.tag.utf8.prefix(4))
-                let tag = (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16) |
-                          (UInt32(bytes[2]) << 8) | UInt32(bytes[3])
-                if axis.tag == tag {
-                    // Convert to 16.16 fixed point
-                    coords[i] = FT_Fixed(variation.value * 65536.0)
-                    break
-                }
+        let valuesByTag = Dictionary(
+            variations.map { (hb_tag_t(openTypeTag: $0.tag), $0.value) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var coords = (0..<Int(mm.pointee.num_axis)).map { i -> FT_Fixed in
+            let axis = mm.pointee.axis[i]
+            // FT_Var_Axis.tag is FT_ULong (UInt on 64-bit Unix); narrow to UInt32 for the lookup.
+            if let value = valuesByTag[UInt32(axis.tag)] {
+                return FT_Fixed(value * 65536.0)  // 16.16 fixed point
             }
+            return axis.def
         }
         FT_Set_Var_Design_Coordinates(ftFace, UInt32(coords.count), &coords)
     }
