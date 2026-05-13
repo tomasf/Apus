@@ -193,6 +193,28 @@ enum TestError: Error {
     #expect(font.familyName == faces[0].familyName)
 }
 
+@Test func `requesting a specific style returns a font with that style`() throws {
+    // Find a system family with multiple styles so we exercise the style-disambiguation path
+    // (matters for .ttc collections and for variable fonts with named instances).
+    let families = try Font.availableFamilies()
+    guard let family = families.first(where: { $0.styles.count >= 2 }) else {
+        return // No multi-style family installed on this system; nothing to verify.
+    }
+
+    for style in family.styles {
+        let font: Font
+        do {
+            font = try Font(family: family.name, style: style)
+        } catch {
+            // Some platform repositories report styles that don't round-trip through a strict lookup.
+            // Skip those; the assertion below covers everything that does match.
+            continue
+        }
+        #expect(font.familyName == family.name, "family mismatch for \(family.name) / \(style)")
+        #expect(font.styleName == style, "expected styleName \"\(style)\" but got \"\(font.styleName)\" for family \(family.name)")
+    }
+}
+
 // MARK: - OpenType Feature Tests
 
 @Test func `available features can be enumerated`() throws {

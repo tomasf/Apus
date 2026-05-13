@@ -17,7 +17,10 @@ public final class Font: @unchecked Sendable {
     public let familyName: String
 
     /// The font's style name (e.g., "Bold", "Italic").
-    public let styleName: String
+    ///
+    /// For variable fonts loaded via a named instance, this reflects the instance's
+    /// subfamily name (e.g., "Bold") rather than the underlying face's default style.
+    public internal(set) var styleName: String
 
     /// Font metrics for text layout.
     public let metrics: FontMetrics
@@ -177,28 +180,49 @@ public final class Font: @unchecked Sendable {
         guard let match = try FontRepository.matchForFont(family: family, style: style) else {
             throw FontError.fontNotFound(family: family, style: style)
         }
-        try self.init(data: match.data, variations: variations)
+        try self.init(data: match.data, family: match.familyName, style: match.style, variations: variations)
     }
 
     /// Load a font from binary data, matching by family name and optional style.
     ///
-    /// This is useful for font collection files (.ttc) that contain multiple faces.
-    /// The method searches through all faces in the font data to find a matching one.
+    /// The match is resolved in this order:
+    ///   1. A discrete face whose family and style names match (e.g. a member of a `.ttc` collection).
+    ///   2. A named instance of a variable font whose subfamily name matches the requested style.
     ///
     /// - Parameters:
     ///   - data: The font file data.
     ///   - family: The font family name to match.
     ///   - style: Optional style name to match. If nil, returns the first face matching the family.
-    ///   - variations: Variation axis values to apply (for variable fonts).
-    /// - Throws: `FontError.faceNotFound` if no matching face is found.
+    ///   - variations: Variation axis values to apply (for variable fonts). When non-empty,
+    ///     these override any matching named instance's axis values.
+    /// - Throws: `FontError.faceNotFound` if no matching face or named instance is found.
     public convenience init(data: Data, family: String, style: String? = nil, variations: [FontVariation] = []) throws {
         let faces = try Font.faces(in: data)
-        guard let faceIndex = faces.firstIndex(where: { face in
-            face.familyName == family && (style == nil || face.styleName == style)
-        }) else {
-            throw FontError.faceNotFound(family: family, style: style)
+
+        // Exact face match (covers .ttc collections and other multi-face files).
+        if let face = faces.first(where: { f in
+            f.familyName == family && (style == nil || f.styleName == style)
+        }) {
+            try self.init(data: data, faceIndex: face.index, variations: variations)
+            return
         }
-        try self.init(data: data, faceIndex: faceIndex, variations: variations)
+
+        // Named instance match inside a family-matching face (covers variable fonts where
+        // the style is exposed as a fvar named instance — e.g. "Jost" / "Bold").
+        if let style {
+            for face in faces where face.familyName == family {
+                if let instanceIndex = Self.findNamedInstance(in: data, faceIndex: face.index, named: style) {
+                    try self.init(data: data, faceIndex: face.index, variations: variations)
+                    if variations.isEmpty {
+                        Self.applyNamedInstance(instanceIndex, hbFont: hbFont, ftFace: ftFace, library: ftLibrary)
+                        self.styleName = style
+                    }
+                    return
+                }
+            }
+        }
+
+        throw FontError.faceNotFound(family: family, style: style)
     }
 
     /// Load a font from a file path using a named instance.
@@ -212,7 +236,10 @@ public final class Font: @unchecked Sendable {
     ///   - namedInstance: Index of the named instance to use.
     public convenience init(path: String, faceIndex: Int = 0, namedInstance: Int) throws {
         try self.init(path: path, faceIndex: faceIndex)
-        hb_font_set_var_named_instance(hbFont, UInt32(namedInstance))
+        Self.applyNamedInstance(namedInstance, hbFont: hbFont, ftFace: ftFace, library: ftLibrary)
+        if let name = Self.namedInstanceName(at: namedInstance, hbFont: hbFont) {
+            self.styleName = name
+        }
     }
 
     /// Load a font from binary data using a named instance.
@@ -226,7 +253,10 @@ public final class Font: @unchecked Sendable {
     ///   - namedInstance: Index of the named instance to use.
     public convenience init(data: Data, faceIndex: Int = 0, namedInstance: Int) throws {
         try self.init(data: data, faceIndex: faceIndex)
-        hb_font_set_var_named_instance(hbFont, UInt32(namedInstance))
+        Self.applyNamedInstance(namedInstance, hbFont: hbFont, ftFace: ftFace, library: ftLibrary)
+        if let name = Self.namedInstanceName(at: namedInstance, hbFont: hbFont) {
+            self.styleName = name
+        }
     }
 
     deinit {
@@ -321,5 +351,58 @@ public final class Font: @unchecked Sendable {
             }
         }
         FT_Set_Var_Design_Coordinates(ftFace, UInt32(coords.count), &coords)
+    }
+
+    /// Apply a named instance to both HarfBuzz (for shaping) and FreeType (for glyph outlines).
+    /// `index` is the HarfBuzz-style 0-based instance index used by `NamedInstance.index`.
+    internal static func applyNamedInstance(_ index: Int, hbFont: OpaquePointer, ftFace: FT_Face, library: FT_Library) {
+        hb_font_set_var_named_instance(hbFont, UInt32(index))
+
+        var mmVar: UnsafeMutablePointer<FT_MM_Var>?
+        guard FT_Get_MM_Var(ftFace, &mmVar) == 0, let mm = mmVar else { return }
+        defer { FT_Done_MM_Var(library, mm) }
+
+        guard index >= 0, index < Int(mm.pointee.num_namedstyles) else { return }
+        let namedStyle = mm.pointee.namedstyle[index]
+        let numAxes = Int(mm.pointee.num_axis)
+        var coords = Array(UnsafeBufferPointer(start: namedStyle.coords, count: numAxes))
+        FT_Set_Var_Design_Coordinates(ftFace, UInt32(numAxes), &coords)
+    }
+
+    /// Look up the subfamily name for a named instance via the OpenType name table.
+    internal static func namedInstanceName(at index: Int, hbFont: OpaquePointer) -> String? {
+        let face = hb_font_get_face(hbFont)
+        let count = hb_ot_var_get_named_instance_count(face)
+        guard index >= 0, UInt32(index) < count else { return nil }
+        let nameID = hb_ot_var_named_instance_get_subfamily_name_id(face, UInt32(index))
+        return getNameString(face: face, nameID: nameID)
+    }
+
+    /// Find a named instance in the given font data whose subfamily name matches `styleName`.
+    /// Returns the HarfBuzz-style 0-based index, or nil if no instance matches.
+    internal static func findNamedInstance(in data: Data, faceIndex: Int, named styleName: String) -> Int? {
+        data.withUnsafeBytes { buffer -> Int? in
+            guard let base = buffer.baseAddress else { return nil }
+            let blob = hb_blob_create(
+                base.assumingMemoryBound(to: CChar.self),
+                UInt32(data.count),
+                HB_MEMORY_MODE_READONLY,
+                nil,
+                nil
+            )
+            defer { hb_blob_destroy(blob) }
+
+            let face = hb_face_create(blob, UInt32(faceIndex))
+            defer { hb_face_destroy(face) }
+
+            let count = hb_ot_var_get_named_instance_count(face)
+            for i in 0..<count {
+                let nameID = hb_ot_var_named_instance_get_subfamily_name_id(face, i)
+                if let name = getNameString(face: face, nameID: nameID), name == styleName {
+                    return Int(i)
+                }
+            }
+            return nil
+        }
     }
 }
