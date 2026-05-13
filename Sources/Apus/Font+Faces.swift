@@ -27,7 +27,7 @@ extension Font {
         try enumerateFaces { library, index in
             var face: FT_Face?
             guard FT_New_Face(library, path, FT_Long(index), &face) == 0, let face else {
-                throw Font.Error.fontLoadFailed(path)
+                throw Font.Error.fontLoadFailed(source: .path(path))
             }
             return face
         }
@@ -47,7 +47,7 @@ extension Font {
                 FT_New_Memory_Face(library, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(index), &face)
             }
             guard error == 0, let face else {
-                throw Font.Error.fontLoadFailed("memory")
+                throw Font.Error.fontLoadFailed(source: .memory)
             }
             return face
         }

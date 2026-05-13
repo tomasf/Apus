@@ -24,10 +24,18 @@ public final class Font: @unchecked Sendable {
 
     public enum Error: Swift.Error {
         case freetypeInitFailed
-        case fontLoadFailed(String)
+        case fontLoadFailed(source: Source)
         case fontNotFound(family: String, style: String?)
         case faceNotFound(family: String, style: String?)
         case glyphLoadFailed(UInt32)
+
+        /// Identifies where font data was being loaded from when an error occurred.
+        public enum Source: Sendable, Hashable {
+            /// A font file at the given path.
+            case path(String)
+            /// An in-memory `Data` blob.
+            case memory
+        }
     }
 
     // MARK: - System Font Support
@@ -113,7 +121,7 @@ public final class Font: @unchecked Sendable {
         try self.init(retainedData: nil, variations: variations) { library in
             var face: FT_Face?
             guard FT_New_Face(library, path, FT_Long(faceIndex), &face) == 0, let face else {
-                throw Self.Error.fontLoadFailed(path)
+                throw Self.Error.fontLoadFailed(source: .path(path))
             }
             return face
         }
@@ -132,7 +140,7 @@ public final class Font: @unchecked Sendable {
                 FT_New_Memory_Face(library, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(faceIndex), &face)
             }
             guard error == 0, let face else {
-                throw Self.Error.fontLoadFailed("memory")
+                throw Self.Error.fontLoadFailed(source: .memory)
             }
             return face
         }
