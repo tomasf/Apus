@@ -25,7 +25,7 @@ extension Font {
 
         return axisInfos.prefix(Int(axisCount)).map { info in
             let tag = tagToString(info.tag)
-            let name = Font.getNameString(face: face, nameID: info.name_id) ?? Self.registeredAxisName(for: tag)
+            let name = Font.nameString(face: face, nameID: info.name_id) ?? Self.registeredAxisName(for: tag)
             return VariationAxis(
                 tag: tag,
                 name: name ?? tag,
@@ -62,7 +62,7 @@ extension Font {
 
         return (0..<count).compactMap { index in
             let nameID = hb_ot_var_named_instance_get_subfamily_name_id(face, index)
-            let name = Font.getNameString(face: face, nameID: nameID)
+            let name = Font.nameString(face: face, nameID: nameID)
 
             var coordCount = axisCount
             var coords = [Float](repeating: 0, count: Int(axisCount))

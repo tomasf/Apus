@@ -278,8 +278,8 @@ public final class Font: @unchecked Sendable {
         return String(bytes: bytes, encoding: .ascii) ?? "????"
     }
 
-    /// Get a string from the font's name table.
-    internal static func getNameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
+    /// Returns a string from the font's OpenType `name` table.
+    internal static func nameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
         // Find an entry for this name ID to get its language
         var entryCount: UInt32 = 0
         guard let entries = hb_ot_name_list_names(face, &entryCount), entryCount > 0 else {
@@ -375,7 +375,7 @@ public final class Font: @unchecked Sendable {
         let count = hb_ot_var_get_named_instance_count(face)
         guard index >= 0, UInt32(index) < count else { return nil }
         let nameID = hb_ot_var_named_instance_get_subfamily_name_id(face, UInt32(index))
-        return getNameString(face: face, nameID: nameID)
+        return nameString(face: face, nameID: nameID)
     }
 
     /// Find a named instance in the given font data whose subfamily name matches `styleName`.
@@ -398,7 +398,7 @@ public final class Font: @unchecked Sendable {
             let count = hb_ot_var_get_named_instance_count(face)
             for i in 0..<count {
                 let nameID = hb_ot_var_named_instance_get_subfamily_name_id(face, i)
-                if let name = getNameString(face: face, nameID: nameID), name == styleName {
+                if let name = nameString(face: face, nameID: nameID), name == styleName {
                     return Int(i)
                 }
             }

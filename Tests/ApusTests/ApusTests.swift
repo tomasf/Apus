@@ -5,7 +5,7 @@ import Foundation
 // MARK: - Test Helpers
 
 /// Returns a font that should be available on the current platform
-func getTestFont() throws -> Font {
+func testFont() throws -> Font {
     // Try common fonts in order of cross-platform availability
     let families = ["Arial", "DejaVu Sans", "Liberation Sans", "FreeSans", "Helvetica"]
 
@@ -19,7 +19,7 @@ func getTestFont() throws -> Font {
 }
 
 /// Returns font data for testing
-func getTestFontData() throws -> Data {
+func testFontData() throws -> Data {
     let families = ["Arial", "DejaVu Sans", "Liberation Sans", "FreeSans", "Helvetica"]
 
     for family in families {
@@ -33,7 +33,7 @@ func getTestFontData() throws -> Data {
 
 /// Creates a temporary font file for path-based tests
 func withTemporaryFontFile<T>(_ body: (String) throws -> T) throws -> T {
-    let data = try getTestFontData()
+    let data = try testFontData()
     let tempDir = FileManager.default.temporaryDirectory
     let tempFile = tempDir.appendingPathComponent("test-font-\(UUID().uuidString).ttf")
 
@@ -57,13 +57,13 @@ enum TestError: Error {
 }
 
 @Test func `font can be loaded from data`() throws {
-    let data = try getTestFontData()
+    let data = try testFontData()
     let font = try Font(data: data)
     #expect(!font.familyName.isEmpty)
 }
 
 @Test func `font can be loaded by family name`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
     let glyphs = font.glyphs(for: "Test")
 
     #expect(glyphs.count == 4)
@@ -79,7 +79,7 @@ enum TestError: Error {
 // MARK: - Text Shaping Tests
 
 @Test func `shaping text produces positioned glyphs`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
     let glyphs = font.glyphs(for: "Hello")
 
     // "Hello" should produce 5 glyphs
@@ -97,7 +97,7 @@ enum TestError: Error {
 }
 
 @Test func `glyph paths contain expected elements`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
     let glyphs = font.glyphs(for: "O")
 
     #expect(glyphs.count == 1)
@@ -122,7 +122,7 @@ enum TestError: Error {
 }
 
 @Test func `positioned path is translated to glyph position`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
     let glyphs = font.glyphs(for: "AB")
 
     #expect(glyphs.count == 2)
@@ -144,7 +144,7 @@ enum TestError: Error {
 // MARK: - Font Metrics Tests
 
 @Test func `font metrics have sensible values`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
 
     // Font metrics should have sensible values
     #expect(font.metrics.ascender > 0)
@@ -157,7 +157,7 @@ enum TestError: Error {
 }
 
 @Test func `font exposes family and style names`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
 
     #expect(!font.familyName.isEmpty)
     #expect(!font.styleName.isEmpty)
@@ -166,7 +166,7 @@ enum TestError: Error {
 // MARK: - Face Enumeration Tests
 
 @Test func `faces can be enumerated from font data`() throws {
-    let data = try getTestFontData()
+    let data = try testFontData()
     let faces = try Font.faces(in: data)
 
     // Should have at least one face
@@ -184,7 +184,7 @@ enum TestError: Error {
 }
 
 @Test func `specific face can be loaded by family name from data`() throws {
-    let data = try getTestFontData()
+    let data = try testFontData()
     let faces = try Font.faces(in: data)
 
     // Load the font using the discovered family name
@@ -218,7 +218,7 @@ enum TestError: Error {
 // MARK: - OpenType Feature Tests
 
 @Test func `available features can be enumerated`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
     let features = font.availableFeatures
 
     // Most fonts have at least some features
@@ -231,7 +231,7 @@ enum TestError: Error {
 }
 
 @Test func `text can be shaped with OpenType features`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
 
     // Shape with and without ligatures disabled
     let withLigatures = font.glyphs(for: "fi")
@@ -273,7 +273,7 @@ enum TestError: Error {
 }
 
 @Test func `glyphs have cluster values for grouping`() throws {
-    let font = try getTestFont()
+    let font = try testFont()
     let glyphs = font.glyphs(for: "Hello")
 
     // Each character should have a different cluster value
