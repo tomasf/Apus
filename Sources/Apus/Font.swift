@@ -22,12 +22,12 @@ public final class Font: @unchecked Sendable {
 
     // MARK: - Errors
 
-    public enum FontError: Error {
+    public enum Error: Swift.Error {
         case freetypeInitFailed
-        case fontLoadFailed (String)
-        case fontNotFound (family: String, style: String?)
-        case faceNotFound (family: String, style: String?)
-        case glyphLoadFailed (UInt32)
+        case fontLoadFailed(String)
+        case fontNotFound(family: String, style: String?)
+        case faceNotFound(family: String, style: String?)
+        case glyphLoadFailed(UInt32)
     }
 
     // MARK: - System Font Support
@@ -60,7 +60,7 @@ public final class Font: @unchecked Sendable {
     // MARK: - Initializers
 
     /// Designated initializer. The `loadFace` closure produces the FT_Face (typically via
-    /// FT_New_Face or FT_New_Memory_Face) and throws a `FontError` on failure. `retainedData`
+    /// FT_New_Face or FT_New_Memory_Face) and throws a `Font.Error` on failure. `retainedData`
     /// is held for the lifetime of the font so memory-mapped face data stays valid.
     private init(
         retainedData: Data?,
@@ -69,7 +69,7 @@ public final class Font: @unchecked Sendable {
     ) throws {
         var library: FT_Library?
         guard FT_Init_FreeType(&library) == 0, let lib = library else {
-            throw FontError.freetypeInitFailed
+            throw Self.Error.freetypeInitFailed
         }
 
         let face: FT_Face
@@ -113,7 +113,7 @@ public final class Font: @unchecked Sendable {
         try self.init(retainedData: nil, variations: variations) { library in
             var face: FT_Face?
             guard FT_New_Face(library, path, FT_Long(faceIndex), &face) == 0, let face else {
-                throw FontError.fontLoadFailed(path)
+                throw Self.Error.fontLoadFailed(path)
             }
             return face
         }
@@ -132,7 +132,7 @@ public final class Font: @unchecked Sendable {
                 FT_New_Memory_Face(library, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(faceIndex), &face)
             }
             guard error == 0, let face else {
-                throw FontError.fontLoadFailed("memory")
+                throw Self.Error.fontLoadFailed("memory")
             }
             return face
         }
@@ -149,11 +149,11 @@ public final class Font: @unchecked Sendable {
     ///   - family: The font family name (e.g., "Helvetica", "Arial").
     ///   - style: Optional style name (e.g., "Bold", "Italic"). Defaults to regular.
     ///   - variations: Variation axis values to apply (for variable fonts).
-    /// - Throws: `FontError.fontNotFound` if no matching font is found,
+    /// - Throws: `Font.Error.fontNotFound` if no matching font is found,
     ///           or an underlying error if the platform font system itself fails.
     public convenience init(family: String, style: String? = nil, variations: [FontVariation] = []) throws {
         guard let match = try FontRepository.match(family: family, style: style) else {
-            throw FontError.fontNotFound(family: family, style: style)
+            throw Self.Error.fontNotFound(family: family, style: style)
         }
         try self.init(data: match.data, family: match.familyName, style: match.style, variations: variations)
     }
@@ -170,7 +170,7 @@ public final class Font: @unchecked Sendable {
     ///   - style: Optional style name to match. If nil, returns the first face matching the family.
     ///   - variations: Variation axis values to apply (for variable fonts). When non-empty,
     ///     these override any matching named instance's axis values.
-    /// - Throws: `FontError.faceNotFound` if no matching face or named instance is found.
+    /// - Throws: `Font.Error.faceNotFound` if no matching face or named instance is found.
     public convenience init(data: Data, family: String, style: String? = nil, variations: [FontVariation] = []) throws {
         let faces = try Font.faces(in: data)
 
@@ -197,7 +197,7 @@ public final class Font: @unchecked Sendable {
             }
         }
 
-        throw FontError.faceNotFound(family: family, style: style)
+        throw Self.Error.faceNotFound(family: family, style: style)
     }
 
     /// Load a font from a file path using a named instance.
