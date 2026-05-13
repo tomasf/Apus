@@ -4,8 +4,8 @@ import Foundation
 extension Font {
     // MARK: - Face Enumeration
 
-    /// Information about a font face within a font file or collection.
-    public struct FaceInfo: Sendable, Hashable {
+    /// Describes a font face within a font file or collection.
+    public struct Face: Sendable, Hashable {
         /// The face index within the font file.
         public let index: Int
 
@@ -23,7 +23,7 @@ extension Font {
     ///
     /// - Parameter path: Path to the font file.
     /// - Returns: Array of face information, one for each face in the file.
-    public static func faces(atPath path: String) throws -> [FaceInfo] {
+    public static func faces(atPath path: String) throws -> [Face] {
         try enumerateFaces { library, index in
             var face: FT_Face?
             guard FT_New_Face(library, path, FT_Long(index), &face) == 0, let face else {
@@ -40,7 +40,7 @@ extension Font {
     ///
     /// - Parameter data: The font file data.
     /// - Returns: Array of face information, one for each face in the file.
-    public static func faces(in data: Data) throws -> [FaceInfo] {
+    public static func faces(in data: Data) throws -> [Face] {
         try enumerateFaces { library, index in
             var face: FT_Face?
             let error = data.withUnsafeBytes { buffer in
@@ -55,7 +55,7 @@ extension Font {
 
     /// Shared implementation of `faces(atPath:)` and `faces(in:)`. The `loadFace` closure is
     /// called with face index -1 first (to read `num_faces` from any face), then once per face.
-    private static func enumerateFaces(_ loadFace: (FT_Library, Int) throws -> FT_Face) throws -> [FaceInfo] {
+    private static func enumerateFaces(_ loadFace: (FT_Library, Int) throws -> FT_Face) throws -> [Face] {
         var library: FT_Library?
         guard FT_Init_FreeType(&library) == 0, let lib = library else {
             throw FontError.freetypeInitFailed
@@ -66,10 +66,10 @@ extension Font {
         let faceCount = Int(probe.pointee.num_faces)
         FT_Done_Face(probe)
 
-        var result: [FaceInfo] = []
+        var result: [Face] = []
         for index in 0..<faceCount {
             guard let face = try? loadFace(lib, index) else { continue }
-            result.append(FaceInfo(
+            result.append(Face(
                 index: index,
                 familyName: String(cString: face.pointee.family_name),
                 styleName: String(cString: face.pointee.style_name)
