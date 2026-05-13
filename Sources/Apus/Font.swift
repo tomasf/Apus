@@ -54,7 +54,7 @@ public final class Font: @unchecked Sendable {
     /// - Returns: An array of font families sorted by name, each containing its available styles.
     /// - Throws: If the platform font system fails to initialize or is not supported.
     public static func availableFamilies() throws -> [Family] {
-        try FontRepository.availableFamilies().map { Family(name: $0.name, styles: $0.styles) }
+        try FontRepository.availableFamilies()
     }
 
     // MARK: - Initializers

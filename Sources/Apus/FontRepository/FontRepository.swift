@@ -71,14 +71,9 @@ internal struct FontRepository: Sendable {
         public let style: String
     }
 
-    /// A font family with its available styles.
-    public struct Family: Sendable, Hashable {
-        /// The font family name (e.g., "Arial").
-        public let name: String
-
-        /// The available styles for this family (e.g., ["Regular", "Bold", "Italic"]).
-        public let styles: [String]
-    }
+    /// `FontRepository.Family` is just an alias for `Font.Family`; kept so the platform
+    /// helpers and `availableFamilies()` can refer to it unqualified.
+    typealias Family = Font.Family
 
     /// Returns all installed font families and their available styles.
     ///
