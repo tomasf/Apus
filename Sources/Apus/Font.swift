@@ -59,53 +59,64 @@ public final class Font: @unchecked Sendable {
 
     // MARK: - Initializers
 
+    /// Designated initializer. The `loadFace` closure produces the FT_Face (typically via
+    /// FT_New_Face or FT_New_Memory_Face) and throws a `FontError` on failure. `retainedData`
+    /// is held for the lifetime of the font so memory-mapped face data stays valid.
+    private init(
+        retainedData: Data?,
+        variations: [FontVariation],
+        loadFace: (FT_Library) throws -> FT_Face
+    ) throws {
+        var library: FT_Library?
+        guard FT_Init_FreeType(&library) == 0, let lib = library else {
+            throw FontError.freetypeInitFailed
+        }
+
+        let face: FT_Face
+        do {
+            face = try loadFace(lib)
+        } catch {
+            FT_Done_FreeType(lib)
+            throw error
+        }
+
+        self.ftLibrary = lib
+        self.ftFace = face
+        self.fontData = retainedData
+
+        self.familyName = String(cString: face.pointee.family_name)
+        self.styleName = String(cString: face.pointee.style_name)
+
+        // A default char size is required for HarfBuzz; using a large size for better precision.
+        // Actual visual scaling is done at render time.
+        FT_Set_Char_Size(face, 0, FT_F26Dot6(1000 * 64), 72, 72)
+
+        self.hbFont = hb_ft_font_create_referenced(face)
+        Self.applyVariations(variations, to: hbFont, ftFace: face)
+
+        let sizeMetrics = face.pointee.size.pointee.metrics
+        self.metrics = FontMetrics(
+            ascender: Double(sizeMetrics.ascender) / 64.0,
+            descender: Double(sizeMetrics.descender) / 64.0,
+            lineHeight: Double(sizeMetrics.height) / 64.0,
+            unitsPerEM: Double(face.pointee.units_per_EM)
+        )
+    }
+
     /// Load a font from a file path.
     ///
     /// - Parameters:
     ///   - path: Path to the font file.
     ///   - faceIndex: Index of the face within the font file (for .ttc collections).
     ///   - variations: Variation axis values to apply (for variable fonts).
-    public init(path: String, faceIndex: Int = 0, variations: [FontVariation] = []) throws {
-        // Initialize FreeType library
-        var library: FT_Library?
-        guard FT_Init_FreeType(&library) == 0, let lib = library else {
-            throw FontError.freetypeInitFailed
+    public convenience init(path: String, faceIndex: Int = 0, variations: [FontVariation] = []) throws {
+        try self.init(retainedData: nil, variations: variations) { library in
+            var face: FT_Face?
+            guard FT_New_Face(library, path, FT_Long(faceIndex), &face) == 0, let face else {
+                throw FontError.fontLoadFailed(path)
+            }
+            return face
         }
-
-        // Load font face
-        var face: FT_Face?
-        let error = FT_New_Face(lib, path, FT_Long(faceIndex), &face)
-        guard error == 0, let f = face else {
-            FT_Done_FreeType(lib)
-            throw FontError.fontLoadFailed(path)
-        }
-        self.ftLibrary = lib
-        self.ftFace = f
-        self.fontData = nil
-
-        // Extract font names
-        self.familyName = String(cString: f.pointee.family_name)
-        self.styleName = String(cString: f.pointee.style_name)
-
-        // Set a default size (required for HarfBuzz)
-        // Using a large size for better precision; actual scaling is done later
-        FT_Set_Char_Size(f, 0, FT_F26Dot6(1000 * 64), 72, 72)
-
-        // Create HarfBuzz font from FreeType face
-        self.hbFont = hb_ft_font_create_referenced(f)
-
-        // Apply variation axis values if any
-        Self.applyVariations(variations, to: hbFont, ftFace: f)
-
-        // Extract font metrics
-        let sizeMetrics = f.pointee.size.pointee.metrics
-        let unitsPerEM = Double(f.pointee.units_per_EM)
-        self.metrics = FontMetrics(
-            ascender: Double(sizeMetrics.ascender) / 64.0,
-            descender: Double(sizeMetrics.descender) / 64.0,
-            lineHeight: Double(sizeMetrics.height) / 64.0,
-            unitsPerEM: unitsPerEM
-        )
     }
 
     /// Load a font from binary data.
@@ -114,48 +125,17 @@ public final class Font: @unchecked Sendable {
     ///   - data: The font file data.
     ///   - faceIndex: Index of the face within the font file (for .ttc collections).
     ///   - variations: Variation axis values to apply (for variable fonts).
-    public init(data: Data, faceIndex: Int = 0, variations: [FontVariation] = []) throws {
-        // Initialize FreeType library
-        var library: FT_Library?
-        guard FT_Init_FreeType(&library) == 0, let lib = library else {
-            throw FontError.freetypeInitFailed
+    public convenience init(data: Data, faceIndex: Int = 0, variations: [FontVariation] = []) throws {
+        try self.init(retainedData: data, variations: variations) { library in
+            var face: FT_Face?
+            let error = data.withUnsafeBytes { buffer in
+                FT_New_Memory_Face(library, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(faceIndex), &face)
+            }
+            guard error == 0, let face else {
+                throw FontError.fontLoadFailed("memory")
+            }
+            return face
         }
-
-        // Load font face from memory
-        var face: FT_Face?
-        let error = data.withUnsafeBytes { buffer in
-            FT_New_Memory_Face(lib, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(faceIndex), &face)
-        }
-        guard error == 0, let f = face else {
-            FT_Done_FreeType(lib)
-            throw FontError.fontLoadFailed("memory")
-        }
-        self.ftLibrary = lib
-        self.ftFace = f
-        self.fontData = data // Retain data to keep memory valid
-
-        // Extract font names
-        self.familyName = String(cString: f.pointee.family_name)
-        self.styleName = String(cString: f.pointee.style_name)
-
-        // Set a default size (required for HarfBuzz)
-        FT_Set_Char_Size(f, 0, FT_F26Dot6(1000 * 64), 72, 72)
-
-        // Create HarfBuzz font from FreeType face
-        self.hbFont = hb_ft_font_create_referenced(f)
-
-        // Apply variation axis values if any
-        Self.applyVariations(variations, to: hbFont, ftFace: f)
-
-        // Extract font metrics
-        let sizeMetrics = f.pointee.size.pointee.metrics
-        let unitsPerEM = Double(f.pointee.units_per_EM)
-        self.metrics = FontMetrics(
-            ascender: Double(sizeMetrics.ascender) / 64.0,
-            descender: Double(sizeMetrics.descender) / 64.0,
-            lineHeight: Double(sizeMetrics.height) / 64.0,
-            unitsPerEM: unitsPerEM
-        )
     }
 
     /// Load a font by family name and optional style using the system font repository.
