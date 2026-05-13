@@ -24,33 +24,13 @@ extension Font {
     /// - Parameter path: Path to the font file.
     /// - Returns: Array of face information, one for each face in the file.
     public static func faces(atPath path: String) throws -> [FaceInfo] {
-        var library: FT_Library?
-        guard FT_Init_FreeType(&library) == 0, let lib = library else {
-            throw FontError.freetypeInitFailed
-        }
-        defer { FT_Done_FreeType(lib) }
-
-        // Load with index -1 to get face count
-        var face: FT_Face?
-        guard FT_New_Face(lib, path, -1, &face) == 0, let f = face else {
-            throw FontError.fontLoadFailed(path)
-        }
-        let faceCount = Int(f.pointee.num_faces)
-        FT_Done_Face(f)
-
-        var result: [FaceInfo] = []
-        for i in 0..<faceCount {
-            guard FT_New_Face(lib, path, FT_Long(i), &face) == 0, let f = face else {
-                continue
+        try enumerateFaces { library, index in
+            var face: FT_Face?
+            guard FT_New_Face(library, path, FT_Long(index), &face) == 0, let face else {
+                throw FontError.fontLoadFailed(path)
             }
-            result.append(FaceInfo(
-                index: i,
-                familyName: String(cString: f.pointee.family_name),
-                styleName: String(cString: f.pointee.style_name)
-            ))
-            FT_Done_Face(f)
+            return face
         }
-        return result
     }
 
     /// Returns information about all faces contained in font data.
@@ -61,37 +41,40 @@ extension Font {
     /// - Parameter data: The font file data.
     /// - Returns: Array of face information, one for each face in the file.
     public static func faces(in data: Data) throws -> [FaceInfo] {
+        try enumerateFaces { library, index in
+            var face: FT_Face?
+            let error = data.withUnsafeBytes { buffer in
+                FT_New_Memory_Face(library, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(index), &face)
+            }
+            guard error == 0, let face else {
+                throw FontError.fontLoadFailed("memory")
+            }
+            return face
+        }
+    }
+
+    /// Shared implementation of `faces(atPath:)` and `faces(in:)`. The `loadFace` closure is
+    /// called with face index -1 first (to read `num_faces` from any face), then once per face.
+    private static func enumerateFaces(_ loadFace: (FT_Library, Int) throws -> FT_Face) throws -> [FaceInfo] {
         var library: FT_Library?
         guard FT_Init_FreeType(&library) == 0, let lib = library else {
             throw FontError.freetypeInitFailed
         }
         defer { FT_Done_FreeType(lib) }
 
-        // Load with index -1 to get face count
-        var face: FT_Face?
-        let loadResult = data.withUnsafeBytes { buffer in
-            FT_New_Memory_Face(lib, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), -1, &face)
-        }
-        guard loadResult == 0, let f = face else {
-            throw FontError.fontLoadFailed("memory")
-        }
-        let faceCount = Int(f.pointee.num_faces)
-        FT_Done_Face(f)
+        let probe = try loadFace(lib, -1)
+        let faceCount = Int(probe.pointee.num_faces)
+        FT_Done_Face(probe)
 
         var result: [FaceInfo] = []
-        for i in 0..<faceCount {
-            let loadResult = data.withUnsafeBytes { buffer in
-                FT_New_Memory_Face(lib, buffer.baseAddress?.assumingMemoryBound(to: FT_Byte.self), FT_Long(data.count), FT_Long(i), &face)
-            }
-            guard loadResult == 0, let f = face else {
-                continue
-            }
+        for index in 0..<faceCount {
+            guard let face = try? loadFace(lib, index) else { continue }
             result.append(FaceInfo(
-                index: i,
-                familyName: String(cString: f.pointee.family_name),
-                styleName: String(cString: f.pointee.style_name)
+                index: index,
+                familyName: String(cString: face.pointee.family_name),
+                styleName: String(cString: face.pointee.style_name)
             ))
-            FT_Done_Face(f)
+            FT_Done_Face(face)
         }
         return result
     }

@@ -20,13 +20,13 @@ internal struct FontRepository: Sendable {
     ///           `LookupError.readingFontFailed` if the font was found but could not be read,
     ///           or `LookupError.notSupported` if font lookup is not available on this platform.
     ///
-    public static func matchForFont(family name: String, style: String? = nil) throws(LookupError) -> Match? {
+    static func match(family name: String, style: String? = nil) throws(LookupError) -> Match? {
 #if canImport(CoreText)
-        try matchForCoreTextFont(family: name, style: style)
+        try coreTextMatch(family: name, style: style)
 #elseif canImport(WinSDK)
-        try matchForWindowsFont(family: name, style: style)
+        try windowsMatch(family: name, style: style)
 #elseif canImport(Fontconfig)
-        try matchForLinuxFont(family: name, style: style)
+        try linuxMatch(family: name, style: style)
 #else
         throw .notSupported
 #endif
@@ -36,7 +36,7 @@ internal struct FontRepository: Sendable {
     ///
     /// On Linux, this returns `true` only if Fontconfig support was compiled in.
     /// On macOS and Windows, this always returns `true`.
-    public static var isAvailable: Bool {
+    static var isAvailable: Bool {
 #if canImport(CoreText) || canImport(WinSDK) || canImport(Fontconfig)
         true
 #else
@@ -45,7 +45,7 @@ internal struct FontRepository: Sendable {
     }
 
     /// Errors that can occur during font lookup.
-    public enum LookupError: Error, Sendable {
+    enum LookupError: Error, Sendable {
         /// Indicates that the platform-specific font system could not be initialized.
         case libraryInitializationFailed
 
@@ -60,38 +60,33 @@ internal struct FontRepository: Sendable {
     /// A result structure representing a successfully matched font.
     ///
     /// Contains the raw font data and resolved family and style names.
-    public struct Match: Sendable {
+    struct Match: Sendable {
         /// The binary data of the matched font file.
-        public let data: Data
+        let data: Data
 
         /// The resolved font family name (e.g., "Arial").
-        public let familyName: String
+        let familyName: String
 
         /// The resolved font style (e.g., "Bold Italic").
-        public let style: String
+        let style: String
     }
 
-    /// A font family with its available styles.
-    public struct FontFamily: Sendable, Hashable {
-        /// The font family name (e.g., "Arial").
-        public let name: String
-
-        /// The available styles for this family (e.g., ["Regular", "Bold", "Italic"]).
-        public let styles: [String]
-    }
+    /// `FontRepository.Family` is just an alias for `Font.Family`; kept so the platform
+    /// helpers and `availableFamilies()` can refer to it unqualified.
+    typealias Family = Font.Family
 
     /// Returns all installed font families and their available styles.
     ///
     /// - Returns: An array of font families, each containing its available styles.
     /// - Throws: `LookupError.libraryInitializationFailed` if the platform font system failed to initialize,
     ///           or `LookupError.notSupported` if font enumeration is not available on this platform.
-    public static func availableFonts() throws(LookupError) -> [FontFamily] {
+    static func availableFamilies() throws(LookupError) -> [Family] {
 #if canImport(CoreText)
-        try availableCoreTextFonts()
+        try availableCoreTextFamilies()
 #elseif canImport(WinSDK)
-        try availableWindowsFonts()
+        try availableWindowsFamilies()
 #elseif canImport(Fontconfig)
-        try availableLinuxFonts()
+        try availableLinuxFamilies()
 #else
         throw .notSupported
 #endif

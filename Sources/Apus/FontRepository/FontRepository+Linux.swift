@@ -3,7 +3,7 @@ import Foundation
 import Fontconfig
 
 internal extension FontRepository {
-    static func matchForLinuxFont(family name: String, style: String?) throws(LookupError) -> Match? {
+    static func linuxMatch(family name: String, style: String?) throws(LookupError) -> Match? {
         guard let config = FcInitLoadConfigAndFonts(),
               let pattern = FcPatternCreate()
         else {
@@ -47,7 +47,7 @@ internal extension FontRepository {
         }
     }
 
-    static func availableLinuxFonts() throws(LookupError) -> [FontFamily] {
+    static func availableLinuxFamilies() throws(LookupError) -> [Family] {
         guard let config = FcInitLoadConfigAndFonts(),
               let pattern = FcPatternCreate(),
               let objectSet = FcObjectSetCreate()
@@ -86,7 +86,7 @@ internal extension FontRepository {
         }
 
         return families.keys.sorted().map { family in
-            FontFamily(name: family, styles: families[family]!.sorted())
+            Family(name: family, styles: families[family]!.sorted())
         }
     }
 }
