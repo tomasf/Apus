@@ -24,7 +24,7 @@ extension Font {
         _ = hb_ot_var_get_axis_infos(face, 0, &axisCount, &axisInfos)
 
         return axisInfos.prefix(Int(axisCount)).map { info in
-            let tag = tagToString(info.tag)
+            let tag = info.tag.openTypeTag
             let name = Font.nameString(face: face, nameID: info.name_id) ?? Self.registeredAxisName(for: tag)
             return VariationAxis(
                 tag: tag,

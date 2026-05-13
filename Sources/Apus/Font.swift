@@ -2,11 +2,6 @@ internal import freetype
 internal import harfbuzz
 import Foundation
 
-/// Creates an OpenType tag from 4 ASCII characters (equivalent to HB_TAG macro)
-internal func makeTag(_ c1: UInt8, _ c2: UInt8, _ c3: UInt8, _ c4: UInt8) -> hb_tag_t {
-    (UInt32(c1) << 24) | (UInt32(c2) << 16) | (UInt32(c3) << 8) | UInt32(c4)
-}
-
 public final class Font: @unchecked Sendable {
     private let ftLibrary: FT_Library
     internal let ftFace: FT_Face
@@ -266,17 +261,6 @@ public final class Font: @unchecked Sendable {
     }
 
     // MARK: - Internal Helpers
-
-    /// Convert an OpenType tag to a 4-character string.
-    internal func tagToString(_ tag: hb_tag_t) -> String {
-        let bytes = [
-            UInt8((tag >> 24) & 0xFF),
-            UInt8((tag >> 16) & 0xFF),
-            UInt8((tag >> 8) & 0xFF),
-            UInt8(tag & 0xFF)
-        ]
-        return String(bytes: bytes, encoding: .ascii) ?? "????"
-    }
 
     /// Returns a string from the font's OpenType `name` table.
     internal static func nameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {

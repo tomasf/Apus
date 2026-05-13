@@ -15,15 +15,12 @@ extension Font {
         var allTags = Set<hb_tag_t>()
 
         // Get features from GSUB table (substitutions like ligatures, small caps)
-        let gsubTag = makeTag(UInt8(ascii: "G"), UInt8(ascii: "S"), UInt8(ascii: "U"), UInt8(ascii: "B"))
-        allTags.formUnion(featureTags(face: face, tableTag: gsubTag))
+        allTags.formUnion(featureTags(face: face, tableTag: hb_tag_t(openTypeTag: "GSUB")))
 
         // Get features from GPOS table (positioning like kerning)
-        let gposTag = makeTag(UInt8(ascii: "G"), UInt8(ascii: "P"), UInt8(ascii: "O"), UInt8(ascii: "S"))
-        allTags.formUnion(featureTags(face: face, tableTag: gposTag))
+        allTags.formUnion(featureTags(face: face, tableTag: hb_tag_t(openTypeTag: "GPOS")))
 
-        // Convert tags to strings
-        return allTags.map { tagToString($0) }.sorted()
+        return allTags.map(\.openTypeTag).sorted()
     }
 
     /// Returns the feature tags declared in a specific OpenType layout table.

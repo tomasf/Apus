@@ -33,11 +33,9 @@ extension Font {
         if features.isEmpty {
             hb_shape(hbFont, buffer, nil, 0)
         } else {
-            var hbFeatures = features.map { feature -> hb_feature_t in
-                let bytes = Array(feature.tag.utf8)
-                let tag = makeTag(bytes[0], bytes[1], bytes[2], bytes[3])
-                return hb_feature_t(
-                    tag: tag,
+            var hbFeatures = features.map { feature in
+                hb_feature_t(
+                    tag: hb_tag_t(openTypeTag: feature.tag),
                     value: feature.value,
                     start: 0,
                     end: UInt32.max // HB_FEATURE_GLOBAL_END
