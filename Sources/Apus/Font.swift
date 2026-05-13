@@ -150,7 +150,7 @@ public final class Font: @unchecked Sendable {
     ///   - style: Optional style name (e.g., "Bold", "Italic"). Defaults to regular.
     ///   - variations: Variation axis values to apply (for variable fonts).
     /// - Throws: `FontError.fontNotFound` if no matching font is found,
-    ///           or `FontRepository.LookupError` if the lookup fails.
+    ///           or an underlying error if the platform font system itself fails.
     public convenience init(family: String, style: String? = nil, variations: [FontVariation] = []) throws {
         guard let match = try FontRepository.match(family: family, style: style) else {
             throw FontError.fontNotFound(family: family, style: style)
