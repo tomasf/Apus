@@ -249,7 +249,7 @@ public final class Font: @unchecked Sendable {
     }
 
     /// Get a string from the font's name table.
-    internal func getNameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
+    internal static func getNameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
         // Find an entry for this name ID to get its language
         var entryCount: UInt32 = 0
         guard let entries = hb_ot_name_list_names(face, &entryCount), entryCount > 0 else {
@@ -266,15 +266,21 @@ public final class Font: @unchecked Sendable {
         }
         guard let language else { return nil }
 
-        // Get the name string
-        var length: UInt32 = 0
-        _ = hb_ot_name_get_utf8(face, nameID, language, &length, nil)
-        guard length > 0 else { return nil }
+        // Probe full length (return value), then read into a sized buffer.
+        // With a nil buffer, hb_ot_name_get_utf8 reports the length only via its return value;
+        // the length out-param is not updated.
+        var size: UInt32 = 0
+        let fullLength = hb_ot_name_get_utf8(face, nameID, language, &size, nil)
+        guard fullLength > 0 else { return nil }
 
-        var buffer = [CChar](repeating: 0, count: Int(length) + 1)
-        length = UInt32(buffer.count)
-        _ = hb_ot_name_get_utf8(face, nameID, language, &length, &buffer)
-        return String(decoding: buffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        var buffer = [UInt8](repeating: 0, count: Int(fullLength) + 1)
+        size = UInt32(buffer.count)
+        _ = buffer.withUnsafeMutableBufferPointer { ptr in
+            ptr.baseAddress!.withMemoryRebound(to: CChar.self, capacity: ptr.count) { cptr in
+                hb_ot_name_get_utf8(face, nameID, language, &size, cptr)
+            }
+        }
+        return String(decoding: buffer.prefix(while: { $0 != 0 }), as: UTF8.self)
     }
 
     /// Apply variation axis values to HarfBuzz font and FreeType face.
