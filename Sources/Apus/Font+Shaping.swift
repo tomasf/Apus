@@ -57,16 +57,15 @@ extension Font {
             let info = glyphInfos![i]
             let pos = glyphPositions![i]
 
-            let glyphId = info.codepoint
-            let xOffset = Double(pos.x_offset) / 64.0
-            let yOffset = Double(pos.y_offset) / 64.0
-            let xAdvance = Double(pos.x_advance) / 64.0
-            let yAdvance = Double(pos.y_advance) / 64.0
-
-            let position = Point(x: cursorX + xOffset, y: cursorY + yOffset)
+            let xAdvance = Double(fixed26_6: pos.x_advance)
+            let yAdvance = Double(fixed26_6: pos.y_advance)
+            let position = Point(
+                x: cursorX + Double(fixed26_6: pos.x_offset),
+                y: cursorY + Double(fixed26_6: pos.y_offset)
+            )
             let advance = Point(x: xAdvance, y: yAdvance)
 
-            if let path = glyphPath(for: glyphId) {
+            if let path = glyphPath(for: info.codepoint) {
                 result.append(PositionedGlyph(path: path, position: position, advance: advance, cluster: info.cluster))
             }
 
@@ -91,56 +90,32 @@ extension Font {
 
         // Define outline decomposition callbacks
         var funcs = FT_Outline_Funcs(
-            move_to: { (to, user) -> Int32 in
+            move_to: { to, user in
                 let path = user!.assumingMemoryBound(to: Path.self)
                 // Close previous contour if there is one
                 if !path.pointee.isEmpty {
                     path.pointee.close()
                 }
-                let point = Point(
-                    x: Double(to!.pointee.x) / 64.0,
-                    y: Double(to!.pointee.y) / 64.0
-                )
-                path.pointee.moveTo(point)
+                path.pointee.moveTo(Point(to!.pointee))
                 return 0
             },
-            line_to: { (to, user) -> Int32 in
+            line_to: { to, user in
                 let path = user!.assumingMemoryBound(to: Path.self)
-                let point = Point(
-                    x: Double(to!.pointee.x) / 64.0,
-                    y: Double(to!.pointee.y) / 64.0
-                )
-                path.pointee.lineTo(point)
+                path.pointee.lineTo(Point(to!.pointee))
                 return 0
             },
-            conic_to: { (control, to, user) -> Int32 in
+            conic_to: { control, to, user in
                 let path = user!.assumingMemoryBound(to: Path.self)
-                let ctrl = Point(
-                    x: Double(control!.pointee.x) / 64.0,
-                    y: Double(control!.pointee.y) / 64.0
-                )
-                let end = Point(
-                    x: Double(to!.pointee.x) / 64.0,
-                    y: Double(to!.pointee.y) / 64.0
-                )
-                path.pointee.quadraticTo(control: ctrl, end: end)
+                path.pointee.quadraticTo(control: Point(control!.pointee), end: Point(to!.pointee))
                 return 0
             },
-            cubic_to: { (control1, control2, to, user) -> Int32 in
+            cubic_to: { control1, control2, to, user in
                 let path = user!.assumingMemoryBound(to: Path.self)
-                let c1 = Point(
-                    x: Double(control1!.pointee.x) / 64.0,
-                    y: Double(control1!.pointee.y) / 64.0
+                path.pointee.cubicTo(
+                    control1: Point(control1!.pointee),
+                    control2: Point(control2!.pointee),
+                    end: Point(to!.pointee)
                 )
-                let c2 = Point(
-                    x: Double(control2!.pointee.x) / 64.0,
-                    y: Double(control2!.pointee.y) / 64.0
-                )
-                let end = Point(
-                    x: Double(to!.pointee.x) / 64.0,
-                    y: Double(to!.pointee.y) / 64.0
-                )
-                path.pointee.cubicTo(control1: c1, control2: c2, end: end)
                 return 0
             },
             shift: 0,

@@ -96,9 +96,9 @@ public final class Font: @unchecked Sendable {
 
         let sizeMetrics = face.pointee.size.pointee.metrics
         self.metrics = FontMetrics(
-            ascender: Double(sizeMetrics.ascender) / 64.0,
-            descender: Double(sizeMetrics.descender) / 64.0,
-            lineHeight: Double(sizeMetrics.height) / 64.0,
+            ascender: Double(fixed26_6: sizeMetrics.ascender),
+            descender: Double(fixed26_6: sizeMetrics.descender),
+            lineHeight: Double(fixed26_6: sizeMetrics.height),
             unitsPerEM: Double(face.pointee.units_per_EM)
         )
     }
