@@ -243,7 +243,7 @@ public final class Font: @unchecked Sendable {
     // MARK: - Internal Helpers
 
     /// Returns a string from the font's OpenType `name` table.
-    internal static func nameString(face: OpaquePointer!, nameID: hb_ot_name_id_t) -> String? {
+    internal static func nameString(face: OpaquePointer?, nameID: hb_ot_name_id_t) -> String? {
         // Find an entry for this name ID to get its language
         var entryCount: UInt32 = 0
         guard let entries = hb_ot_name_list_names(face, &entryCount), entryCount > 0 else {

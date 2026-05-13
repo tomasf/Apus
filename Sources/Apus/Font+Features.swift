@@ -24,7 +24,7 @@ extension Font {
     }
 
     /// Returns the feature tags declared in a specific OpenType layout table.
-    private func featureTags(face: OpaquePointer!, tableTag: hb_tag_t) -> [hb_tag_t] {
+    private func featureTags(face: OpaquePointer?, tableTag: hb_tag_t) -> [hb_tag_t] {
         // First call to get the count
         var count: UInt32 = 0
         let total = hb_ot_layout_table_get_feature_tags(face, tableTag, 0, &count, nil)
