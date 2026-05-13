@@ -10,7 +10,7 @@ internal extension FontRepository {
 
     static private func internalMatchForCoreTextFont(family name: String, style: String?) throws(LookupError) -> Match? {
         let attributes = NSMutableDictionary()
-        attributes[kCTFontNameAttribute] = name
+        attributes[kCTFontFamilyNameAttribute] = name
         if let style = style {
             attributes[kCTFontStyleNameAttribute] = style
         }
