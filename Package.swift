@@ -2,18 +2,6 @@
 
 import PackageDescription
 
-// Platform-specific source files for FreeType
-#if os(macOS) || os(iOS)
-let ftSystem = "builds/unix/ftsystem.c"
-let ftDebug = "src/base/ftdebug.c"
-#elseif os(Windows)
-let ftSystem = "builds/windows/ftsystem.c"
-let ftDebug = "builds/windows/ftdebug.c"
-#else
-let ftSystem = "src/base/ftsystem.c"
-let ftDebug = "src/base/ftdebug.c"
-#endif
-
 let package = Package(
     name: "Apus",
     products: [
@@ -43,8 +31,8 @@ let package = Package(
             name: "freetype",
             path: "Sources/freetype",
             sources: [
-                ftSystem,
-                ftDebug,
+                "platform/ftsystem.c",
+                "platform/ftdebug.c",
                 "src/autofit/autofit.c",
                 "src/base/ftbase.c",
                 "src/base/ftbbox.c",
@@ -103,6 +91,7 @@ let package = Package(
             publicHeadersPath: "src",
             cxxSettings: [
                 .define("HAVE_FREETYPE"),
+                .define("HB_NO_MT", .when(platforms: [.wasi])),
             ]
         ),
         .systemLibrary(
