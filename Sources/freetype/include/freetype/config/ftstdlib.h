@@ -163,6 +163,18 @@
    */
 
 
+#if defined( __wasi__ ) && !defined( __wasm_exception_handling__ )
+
+  /* WASI has no setjmp without the exception handling proposal.  Only  */
+  /* error recovery uses it, so there an error that would jump ends the */
+  /* program instead.                                                   */
+#include <stdlib.h>
+#define ft_jmp_buf          int
+#define ft_longjmp( b, v )  abort()
+#define ft_setjmp( b )      0
+
+#else
+
 #include <setjmp.h>
 
 #define ft_jmp_buf     jmp_buf  /* note: this cannot be a typedef since  */
@@ -171,6 +183,8 @@
 
 #define ft_longjmp     longjmp
 #define ft_setjmp( b ) setjmp( *(ft_jmp_buf*) &(b) ) /* same thing here */
+
+#endif
 
 
   /* The following is only used for debugging purposes, i.e., if   */
