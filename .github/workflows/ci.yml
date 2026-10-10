@@ -49,11 +49,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The runner's Visual Studio C++ library needs Clang 20 or newer, which Swift 6.2's lacks
       - name: Install Swift
-        uses: compnerd/gha-setup-swift@main
-        with:
-          swift-version: "swift-6.2.3-release"
-          swift-build: "6.2.3-RELEASE"
+        uses: SwiftyLab/setup-swift@latest
 
       - name: Build
         run: swift build
