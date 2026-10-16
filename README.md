@@ -169,4 +169,16 @@ for glyph in glyphs {
 
 ## License
 
-MIT
+Apus is available under the MIT license. It includes the source code of FreeType 2.13.3 and HarfBuzz 12.3.0, which have licenses of their own:
+
+- FreeType, in `Sources/freetype`, is used under the FreeType License (`docs/FTL.TXT`). Portions of this software are copyright © 2024 The FreeType Project (www.freetype.org). All rights reserved.
+- HarfBuzz, in `Sources/harfbuzz`, is under its "Old MIT" license (`COPYING`).
+
+### Changes to FreeType
+
+Apus includes FreeType's source code and license files, without its build system, documentation or tests, and with these changes:
+
+- `include/freetype/config/ftstdlib.h`: on WASI without the exception handling proposal, which has no `setjmp`, `ft_setjmp` and `ft_longjmp` are replaced with stand-ins, so an error that would jump ends the program instead.
+- `platform/ftsystem.c` and `platform/ftdebug.c` are added. They pick FreeType's system and debug sources for the platform being built for.
+- `include/module.modulemap` is added, for Swift.
+- `docs/GPLv2.TXT` is left out, since Apus uses FreeType under the FreeType License.
